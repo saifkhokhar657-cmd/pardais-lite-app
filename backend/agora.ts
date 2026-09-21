@@ -21,6 +21,16 @@ export function buildRtcToken(channel: string, uid: string, role: 'host' | 'audi
   const agoraUid = numericAgoraUid(uid);
   const expires = Math.floor(Date.now() / 1000) + ttl();
   const rtcRole = role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
-  const token = RtcTokenBuilder.buildTokenWithUid(id, certValue, channel, agoraUid, rtcRole, expires);
+  const tokenExpirationInSeconds = ttl();
+  const privilegeExpirationInSeconds = ttl();
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    id,
+    certValue,
+    channel,
+    agoraUid,
+    rtcRole,
+    tokenExpirationInSeconds,
+    privilegeExpirationInSeconds,
+  );
   return { token, appId: id, uid: agoraUid, expiresAt: expires };
 }
