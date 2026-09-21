@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut } from 'firebase/auth';
+import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile } from 'firebase/auth';
 import { auth } from './firebase';
 import { api } from './api';
 import { AgoraLiveRoom } from './AgoraLiveRoom';
@@ -165,7 +165,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }: { mode: 'login' | 'signu
     setError('');
     if (!name.trim() || !email.trim() || !password) return setError('Please enter your name, email and password.');
     if (password.length < 8) return setError('Password must be at least 8 characters.');
-    try { const cred = await createUserWithEmailAndPassword(auth, email.trim(), password); await cred.user.updateProfile({ displayName: name.trim() }); await api.post('/api/auth/register', { name: name.trim() }); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not create account.'); }
+    try { const cred = await createUserWithEmailAndPassword(auth, email.trim(), password); await updateProfile(cred.user, { displayName: name.trim() }); await api.post('/api/auth/register', { name: name.trim() }); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not create account.'); }
   };
   const login = async () => {
     setError(''); if (!email.trim() || !password) return setError('Please enter email and password.');
