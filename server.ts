@@ -7,6 +7,7 @@ import { requireAuth, assertSelf, type AuthenticatedRequest } from './backend/au
 import { buildRtcToken, numericAgoraUid } from './backend/agora.js';
 import { createDownloadUrl, createUploadUrl } from './backend/r2.js';
 import { db } from './backend/firebase-admin.js';
+import type { Transaction } from 'firebase-admin/firestore';
 
 const app = express();
 const port = Number(process.env.PORT || 8080);
@@ -132,7 +133,7 @@ app.post('/api/live/join', asyncRoute(async (req, res) => {
   const membership = existing || { id: await add('live_members', { roomId, userId, role: 'audience', anonymous: privateAccount, displayName: privateAccount ? null : (req.body?.displayName || req.user!.name || null), agoraUid: numericAgoraUid(userId) }) };
   if (!existing) {
     const roomRef = db.collection('live_rooms').doc(roomId);
-    await db.runTransaction(async tx => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Number(snap.data()?.viewerCount || 0) + 1, updatedAt: now() }); });
+    await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Number(snap.data()?.viewerCount || 0) + 1, updatedAt: now() }); });
   }
   const token = buildRtcToken(room.channel, userId, room.hostId === userId ? 'host' : 'audience');
   return res.json({ success: true, membership, room, agora: { ...token, channel: room.channel } });
@@ -146,8 +147,8 @@ app.post('/api/live/token', asyncRoute(async (req, res) => {
   const token = buildRtcToken(room.channel, userId, role); return res.json({ success: true, channel: room.channel, role, ...token });
 }));
 app.post('/api/live/end', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const room: any = await get('live_rooms', roomId); if (!room) return res.status(404).json({ error: 'room not found' }); assertSelf(req, String(room.hostId)); await update('live_rooms', roomId, { status: 'ended', endedAt: now() }); return res.json({ success: true }); }));
-app.post('/api/live/leave', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const rows = await list('live_members', { roomId, userId: req.user!.uid }, 10); for (const row of rows) await remove('live_members', row.id); if (rows.length) { const roomRef = db.collection('live_rooms').doc(roomId); await db.runTransaction(async tx => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Math.max(0, Number(snap.data()?.viewerCount || 0) - 1), updatedAt: now() }); }); } return res.json({ success: true }); }));
-app.post('/api/live/heart', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const ref = db.collection('live_rooms').doc(roomId); await db.runTransaction(async tx => { const snap = await tx.get(ref); if (!snap.exists || snap.data()?.status !== 'live') throw new Error('room not live'); const current = Number(snap.data()?.hearts || 0); tx.update(ref, { hearts: current + 1, updatedAt: now() }); }); return res.json({ success: true }); }));
+app.post('/api/live/leave', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const rows = await list('live_members', { roomId, userId: req.user!.uid }, 10); for (const row of rows) await remove('live_members', row.id); if (rows.length) { const roomRef = db.collection('live_rooms').doc(roomId); await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Math.max(0, Number(snap.data()?.viewerCount || 0) - 1), updatedAt: now() }); }); } return res.json({ success: true }); }));
+app.post('/api/live/heart', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const ref = db.collection('live_rooms').doc(roomId); await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(ref); if (!snap.exists || snap.data()?.status !== 'live') throw new Error('room not live'); const current = Number(snap.data()?.hearts || 0); tx.update(ref, { hearts: current + 1, updatedAt: now() }); }); return res.json({ success: true }); }));
 
 app.post('/api/gifts/send', asyncRoute(async (req, res) => { const senderId = req.user!.uid; const receiverId = String(req.body?.receiverId || ''); const giftId = String(req.body?.giftId || ''); const quantity = Math.max(1, Number(req.body?.quantity || 1)); const coins = Math.max(0, Number(req.body?.coins || 0)); if (!receiverId || !giftId) return res.status(400).json({ error: 'receiverId and giftId are required' }); const id = await add('gift_transactions', { senderId, receiverId, giftId, quantity, coins, roomId: req.body?.roomId || null }); return res.status(201).json({ success: true, transactionId: id }); }));
 
@@ -158,7 +159,7 @@ app.post('/api/wallet/transfer', asyncRoute(async (req, res) => {
   if (!receiverId || !receiverUsername || !Number.isInteger(coins) || coins <= 0 || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'valid receiver, positive coins and 4-digit PIN are required' });
   const senderRef = db.collection('wallets').doc(userId), receiverRef = db.collection('wallets').doc(receiverId);
   let balanceAfter = 0;
-  await db.runTransaction(async tx => { const [sSnap, rSnap] = await Promise.all([tx.get(senderRef), tx.get(receiverRef)]); if (!rSnap.exists) throw new Error('recipient wallet was not found'); const senderCoins = Number(sSnap.data()?.coins || 0), receiverCoins = Number(rSnap.data()?.coins || 0); if (senderCoins < coins) throw new Error(`insufficient coins: ${senderCoins}`); balanceAfter = senderCoins - coins; tx.set(senderRef, { userId, coins: balanceAfter, balance: balanceAfter, updatedAt: now() }, { merge: true }); tx.set(receiverRef, { userId: receiverId, coins: receiverCoins + coins, balance: receiverCoins + coins, updatedAt: now() }, { merge: true }); });
+  await db.runTransaction(async (tx: Transaction) => { const [sSnap, rSnap] = await Promise.all([tx.get(senderRef), tx.get(receiverRef)]); if (!rSnap.exists) throw new Error('recipient wallet was not found'); const senderCoins = Number(sSnap.data()?.coins || 0), receiverCoins = Number(rSnap.data()?.coins || 0); if (senderCoins < coins) throw new Error(`insufficient coins: ${senderCoins}`); balanceAfter = senderCoins - coins; tx.set(senderRef, { userId, coins: balanceAfter, balance: balanceAfter, updatedAt: now() }, { merge: true }); tx.set(receiverRef, { userId: receiverId, coins: receiverCoins + coins, balance: receiverCoins + coins, updatedAt: now() }, { merge: true }); });
   const transactionId = await add('wallet_transactions', { userId, counterpartyId: receiverId, counterpartyUsername: receiverUsername, type: 'Sent', coins: -coins, balanceAfter }); await add('wallet_transactions', { userId: receiverId, counterpartyId: userId, counterpartyUsername: req.user!.email || userId, type: 'Received', coins, balanceAfter: 0 }); return res.status(201).json({ success: true, transactionId, coins, balance: balanceAfter });
 }));
 

@@ -27,7 +27,7 @@ export async function list(collection: string, filters: Record<string, unknown> 
   let q: Query<DocumentData> = db.collection(collection);
   for (const [field, value] of Object.entries(filters)) q = q.where(field, '==', value);
   const snap = await q.limit(limit).get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 export async function upsertUser(uid: string, data: Record<string, unknown>) {
