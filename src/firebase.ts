@@ -25,7 +25,7 @@ const missingFirebaseConfig = requiredFirebaseConfig
   .map(([name]) => name);
 
 if (missingFirebaseConfig.length) {
-  throw new Error(`Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}`);
+  throw new Error(`Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}. Add these VITE_* variables in Railway and redeploy.`);
 }
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);

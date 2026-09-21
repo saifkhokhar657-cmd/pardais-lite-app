@@ -85,3 +85,7 @@ After adding/updating variables, deploy the staged changes. Railway variables ar
 
 ## Firebase Web config
 The browser Firebase SDK uses only the VITE_FIREBASE_* variables at build time. No hardcoded fallback API key is used.
+
+
+## V12 startup fix
+The web bootstrap now renders the Pardais Lite splash before loading the React app. If a JavaScript module (including Firebase config) fails during startup, the splash remains visible and shows a refresh/error message instead of a blank dark screen.
