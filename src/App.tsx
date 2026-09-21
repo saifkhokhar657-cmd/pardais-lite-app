@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile, updatePassword } from 'firebase/auth';
+import { browserLocalPersistence, createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile, updatePassword } from 'firebase/auth';
 import { auth } from './firebase';
 import { api } from './api';
 import { AgoraLiveRoom } from './AgoraLiveRoom';
@@ -60,12 +60,17 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [activeLiveRoom, setActiveLiveRoom] = useState<any | null>(null);
   const [onboarding, setOnboarding] = useState(false);
+  const appNavStateRef = useRef({ tab, subPage, fullPage, profileOverlay, room });
+  appNavStateRef.current = { tab, subPage, fullPage, profileOverlay, room };
 
   useEffect(() => {
     let mounted = true;
     let fallbackTimer: number | undefined;
-    try {
-      const unsubscribe = onAuthStateChanged(auth, user => {
+    let unsubscribe = () => {};
+    const startAuth = async () => {
+      try { await setPersistence(auth, browserLocalPersistence); } catch {}
+      try {
+        unsubscribe = onAuthStateChanged(auth, user => {
         if (!mounted) return;
         if (user) {
           try {
@@ -84,20 +89,19 @@ function App() {
             localStorage.removeItem('pardaisLiteUserId');
           } catch {}
         }
-      });
-      // Never leave the user trapped on the splash screen if Firebase auth is slow/offline.
-      fallbackTimer = window.setTimeout(() => {
+        });
+        setAuthReady(true);
+      } catch {
         if (mounted) setAuthReady(true);
-      }, 3500);
-      return () => {
-        mounted = false;
-        if (fallbackTimer) window.clearTimeout(fallbackTimer);
-        unsubscribe();
-      };
-    } catch {
-      setAuthReady(true);
-      return () => { mounted = false; if (fallbackTimer) window.clearTimeout(fallbackTimer); };
-    }
+      }
+    };
+    void startAuth();
+    fallbackTimer = window.setTimeout(() => { if (mounted) setAuthReady(true); }, 5000);
+    return () => {
+      mounted = false;
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -108,6 +112,22 @@ function App() {
     }, 1800);
     return () => window.clearTimeout(timer);
   }, [splash]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const stateKey = 'pardais-lite-app';
+    try { window.history.pushState({ pardais: stateKey }, '', window.location.href); } catch {}
+    const onPopState = () => {
+      const current = appNavStateRef.current;
+      if (current.subPage) setSubPage(null);
+      else if (current.fullPage) setFullPage(null);
+      else if (current.profileOverlay) setProfileOverlay(null);
+      else if (current.tab !== 'home' || current.room) { setRoom(false); nav('home'); }
+      else { try { window.history.pushState({ pardais: stateKey }, '', window.location.href); } catch {} }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [authenticated]);
 
   useEffect(() => {
     const onButtonClick = (event: MouseEvent) => {
@@ -217,10 +237,27 @@ function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, liveView, setLi
 }
 
 function CreateScreen({ camera, setCamera, onClose, onGoLive }: any) {
- const videoRef=useRef<HTMLVideoElement|null>(null); const streamRef=useRef<MediaStream|null>(null); const [micOn,setMicOn]=useState(true); const [camOn,setCamOn]=useState(true); const [error,setError]=useState('');
- useEffect(()=>{let active=true;(async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});if(!active){stream.getTracks().forEach(t=>t.stop());return}streamRef.current=stream;if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play()}}catch(e:any){setError('Camera/microphone permission is required for preview.');setCamOn(false);setMicOn(false)}})();return()=>{active=false;streamRef.current?.getTracks().forEach(t=>t.stop())}},[]);
- const toggleCam=()=>{const t=streamRef.current?.getVideoTracks()[0];if(t){const next=!camOn;t.enabled=next;setCamOn(next)}}; const toggleMic=()=>{const t=streamRef.current?.getAudioTracks()[0];if(t){const next=!micOn;t.enabled=next;setMicOn(next)}};
- return <main className='go-live-screen'><div className='go-live-preview'><button className='camera-close go-live-close' onClick={onClose}><X/></button><div className='ready-pill'><i/> Ready</div><video ref={videoRef} muted playsInline style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}/>{!camOn&&<div className='camera-off-preview'><VideoOff/><span>Camera is off</span></div>}{error&&<div className='camera-off-preview'><TriangleAlert/><span>{error}</span></div>}<div className='go-live-controls'><button onClick={()=>setCamera(camera==='normal'?'effects':'normal')}><Sparkles/><span>{camera==='normal'?'Beauty':'Effects'}</span></button><button className={micOn?'control-active':'cam-off-active'} onClick={toggleMic}>{micOn?<Mic/>:<MicOff/>}<span>{micOn?'Mic On':'Mic Off'}</span></button><button className={camOn?'control-active':'cam-off-active'} onClick={toggleCam}>{camOn?<Camera/>:<VideoOff/>}<span>{camOn?'Cam On':'Cam Off'}</span></button></div><button className='go-live-main' onClick={()=>void onGoLive({camOff:!camOn,muted:!micOn})}>• Go Live</button></div></main>;
+ const videoRef=useRef<HTMLVideoElement|null>(null); const streamRef=useRef<MediaStream|null>(null); const recorderRef=useRef<MediaRecorder|null>(null); const chunksRef=useRef<Blob[]>([]); const fileRef=useRef<HTMLInputElement|null>(null);
+ const [micOn,setMicOn]=useState(true); const [camOn,setCamOn]=useState(true); const [facing,setFacing]=useState<'user'|'environment'>('user'); const [zoom,setZoom]=useState(1); const [effect,setEffect]=useState(false); const [recording,setRecording]=useState(false); const [uploading,setUploading]=useState(false); const [error,setError]=useState('');
+ const stopStream=()=>{streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;};
+ const startCamera=async(nextFacing=facing)=>{ stopStream(); setError(''); try { const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:nextFacing},width:{ideal:1080},height:{ideal:1920}},audio:true}); streamRef.current=stream; if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();} setCamOn(true); setMicOn(true); } catch(e:any){setError('Camera/microphone permission is required.');setCamOn(false);setMicOn(false);} };
+ useEffect(()=>{void startCamera('user'); return()=>{stopStream();};},[]);
+ const uploadFile=async(file:File)=>{ if(!file.type.startsWith('video/')){window.alert('Please select a video.');return;} setUploading(true); try { const p=await api.post('/api/media/presign',{fileName:file.name,contentType:file.type}); const put=await fetch(p.data.url,{method:'PUT',headers:{'Content-Type':file.type},body:file}); if(!put.ok) throw new Error('R2 upload failed'); await api.post('/api/reels',{key:p.data.key,mediaUrl:p.data.publicUrl,caption:file.name.replace(/\.[^.]+$/,'')}); window.alert('Video uploaded successfully.'); } catch(e:any){window.alert(e?.message||'Video upload failed.')} finally{setUploading(false);} };
+ const recordStart=()=>{ if(!streamRef.current||recording)return; try { const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||''; const rec=new MediaRecorder(streamRef.current,mime?{mimeType:mime}:undefined); chunksRef.current=[]; rec.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data)}; rec.onstop=()=>{const blob=new Blob(chunksRef.current,{type:rec.mimeType||'video/webm'}); const file=new File([blob],`pardais-${Date.now()}.webm`,{type:blob.type}); void uploadFile(file);}; rec.start(); recorderRef.current=rec; setRecording(true); } catch { setError('Video recording is not available on this device/browser.'); } };
+ const recordStop=()=>{recorderRef.current?.stop();recorderRef.current=null;setRecording(false);};
+ const toggleCam=()=>{const t=streamRef.current?.getVideoTracks()[0]; if(!t)return; const next=!camOn; t.enabled=next; setCamOn(next);};
+ const toggleMic=()=>{const t=streamRef.current?.getAudioTracks()[0]; if(!t)return; const next=!micOn; t.enabled=next; setMicOn(next);};
+ const flip=()=>{const next=facing==='user'?'environment':'user';setFacing(next);void startCamera(next);};
+ const zoomIn=()=>setZoom(z=>z>=2?1:z+0.5);
+ const filterStyle=effect?{filter:'contrast(1.08) saturate(1.22) brightness(1.04)',transform:`scaleX(${facing==='user'?-1:1}) scale(${zoom})`}:{transform:`scaleX(${facing==='user'?-1:1}) scale(${zoom})`};
+ return <main className='camera-screen'><div className='camera-preview'>
+   <button className='camera-close' onClick={onClose}><X/></button><div className='camera-mode'><Palette/> Normal</div><button className='moon' onClick={()=>{}} aria-label='Night mode'>🌙</button>
+   <video ref={videoRef} muted playsInline className='capture-preview' style={filterStyle}/>{!camOn&&<div className='camera-off-preview'><VideoOff/><span>Camera Off</span></div>}{error&&<div className='camera-error'>{error}</div>}
+   <div className='camera-side'><button onClick={flip}><span>↻</span><small>Flip</small></button><button onClick={()=>setEffect(v=>!v)}><Sparkles/><small>{effect?'On':'Off'}</small></button><button onClick={zoomIn}><b>{zoom}x</b><small>Zoom</small></button></div>
+   <div className='camera-bottom'><button onClick={()=>fileRef.current?.click()} disabled={uploading}><ImageIcon/><small>{uploading?'Uploading…':'Gallery'}</small></button><div className='shutter-wrap'><button className={`shutter ${recording?'recording':''}`} onPointerDown={recordStart} onPointerUp={recordStop} onPointerCancel={recordStop} onClick={()=>{if(!recording)recordStart()}} aria-label='Record video'/><small>{recording?'Recording…':'Tap for Photo · Hold for Video'}</small></div><button onClick={toggleCam}><VideoOff/><small>{camOn?'Camera':'Off'}</small></button></div>
+   <input ref={fileRef} type='file' accept='video/*' hidden onChange={e=>{const f=e.target.files?.[0];if(f)void uploadFile(f);e.currentTarget.value=''}}/>
+   <div className='capture-live-controls'><button className={micOn?'control-active':'cam-off-active'} onClick={toggleMic}>{micOn?<Mic/>:<MicOff/>}<span>{micOn?'Mic':'Muted'}</span></button><button className={camOn?'control-active':'cam-off-active'} onClick={toggleCam}>{camOn?<Camera/>:<VideoOff/>}<span>{camOn?'Camera':'Off'}</span></button><button onClick={flip}><span>↻</span><span>Flip</span></button><button onClick={()=>void onGoLive({camOff:!camOn,muted:!micOn,facing})}><Zap/><span>Go Live</span></button></div>
+ </div></main>;
 }
 
 function InboxScreen() {
