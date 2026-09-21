@@ -7,7 +7,7 @@ import {
   Bell, Ban, Bookmark, CalendarDays, Camera, ChevronLeft, ChevronRight, CircleHelp,
   Copy, Edit3, Gift, Globe2, Heart, Home, Image as ImageIcon, Languages, Link2,
   LockKeyhole, LogOut, MessageCircle, MessageSquare, Moon, MoreHorizontal, Palette,
-  Mic, Paperclip, Phone, Plus, Search, Send, Settings, Share2, ShieldCheck, Sparkles, Trash2,
+  Mic, MicOff, Paperclip, Phone, Plus, Search, Send, Settings, Share2, ShieldCheck, Sparkles, Trash2,
   TriangleAlert, UserPlus, UserRound, Users, Video, VideoOff, WalletCards, X, Zap
 } from 'lucide-react';
 
@@ -177,13 +177,13 @@ function AuthScreen({ mode, setMode, onAuthenticated }: { mode: 'login' | 'signu
   const requestReset=async()=>{setError('');if(!email.trim())return setError('Please enter an email.');try{await sendPasswordResetEmail(auth,email.trim());setError('Password reset email sent. Check your inbox.');}catch(e:any){setError(String(e?.message||'Could not send reset email.').replace('Firebase: ',''));}};
   if(mode==='success')return <main className='auth-screen'><div className='auth-success'><div className='auth-success-icon'>✓</div><h1>Password Reset!</h1><p>Your password reset link has been sent.</p><button onClick={()=>{resetState();setMode('login')}}>Go to Login</button></div></main>;
   if(mode==='forgot'||mode==='verify'||mode==='reset')return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='RESET PASSWORD' onBack={()=>{resetState();setMode('login')}}/><div className='auth-card auth-card-compact'><p>Enter your email to receive a secure Firebase password reset link.</p><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare/>} onChange={setEmail}/><AuthError message={error}/><button className='auth-primary' onClick={()=>void requestReset()}>Send Reset Email</button></div></main>;
-  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>{mode==='signup'?'CREATE ACCOUNT':'WELCOME BACK'}</span></div><div className='auth-card'>{mode==='signup'?<><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound/>} onChange={setName}/><AuthField label='USERNAME' value={username} type='text' placeholder='@username' icon={<UserRound/>} onChange={v=>setUsername(v.replace(/\s/g,''))}/><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare/>} onChange={setEmail}/><AuthField label='PASSWORD' value={password} type={showPassword?'text':'password'} placeholder='Create a password' icon={<LockKeyhole/>} onChange={setPassword} show={showPassword} onToggle={()=>setShowPassword(!showPassword)}/><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole/>} onChange={setConfirmPassword}/><label className='auth-check'><input type='checkbox' checked={remember} onChange={e=>setRemember(e.target.checked)}/><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={()=>void createAccount()}>Create Account</button><div className='auth-footer'>Already have an account? <button type='button' onClick={()=>{resetState();window.history.replaceState({},'', '/login');setMode('login')}}>Login</button></div></>:<><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare/>} onChange={setEmail}/><AuthField label='PASSWORD' value={password} type={showPassword?'text':'password'} placeholder='********' icon={<LockKeyhole/>} onChange={setPassword} show={showPassword} onToggle={()=>setShowPassword(!showPassword)}/><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e=>setRemember(e.target.checked)}/><span>Remember Me</span></label><button className='auth-link' onClick={()=>{resetState();setMode('forgot')}}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={()=>void login()}>Login</button><button className='auth-link' style={{width:'100%',marginTop:10}} onClick={()=>void googleLogin()}>Continue with Google</button><div className='auth-footer'>Don't have an account? <button type='button' onClick={()=>{resetState();window.history.replaceState({},'', '/signup');setMode('signup')}}>Sign Up</button></div></>}</div></main>;
+  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>{mode==='signup'?'CREATE ACCOUNT':'WELCOME BACK'}</span></div><div className='auth-card'>{mode==='signup'?<><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound/>} onChange={setName}/><AuthField label='USERNAME' value={username} type='text' placeholder='@username' icon={<UserRound/>} onChange={(v:string)=>setUsername(v.replace(/\s/g,''))}/><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare/>} onChange={setEmail}/><AuthField label='PASSWORD' value={password} type={showPassword?'text':'password'} placeholder='Create a password' icon={<LockKeyhole/>} onChange={setPassword} show={showPassword} onToggle={()=>setShowPassword(!showPassword)}/><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole/>} onChange={setConfirmPassword}/><label className='auth-check'><input type='checkbox' checked={remember} onChange={e=>setRemember(e.target.checked)}/><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={()=>void createAccount()}>Create Account</button><div className='auth-footer'>Already have an account? <button type='button' onClick={()=>{resetState();window.history.replaceState({},'', '/login');setMode('login')}}>Login</button></div></>:<><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare/>} onChange={setEmail}/><AuthField label='PASSWORD' value={password} type={showPassword?'text':'password'} placeholder='********' icon={<LockKeyhole/>} onChange={setPassword} show={showPassword} onToggle={()=>setShowPassword(!showPassword)}/><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e=>setRemember(e.target.checked)}/><span>Remember Me</span></label><button className='auth-link' onClick={()=>{resetState();setMode('forgot')}}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={()=>void login()}>Login</button><button className='auth-link' style={{width:'100%',marginTop:10}} onClick={()=>void googleLogin()}>Continue with Google</button><div className='auth-footer'>Don't have an account? <button type='button' onClick={()=>{resetState();window.history.replaceState({},'', '/signup');setMode('signup')}}>Sign Up</button></div></>}</div></main>;
 }
 
 function GoogleOnboarding({onComplete}:{onComplete:()=>void}){
  const user=auth.currentUser!; const [name,setName]=useState(user.displayName||''); const [username,setUsername]=useState(''); const [password,setPassword]=useState(''); const [confirm,setConfirm]=useState(''); const [error,setError]=useState(''); const [saving,setSaving]=useState(false);
  const submit=async()=>{setError(''); if(!name.trim()||!username.trim()||!password)return setError('Name, username and password are required.'); if(!/^@[a-z0-9_]{3,20}$/i.test(username.trim()))return setError('Username must start with @ and use 3-20 letters, numbers or underscores.'); if(password.length<8)return setError('Password must be at least 8 characters.'); if(password!==confirm)return setError('Passwords do not match.'); setSaving(true); try{await updatePassword(user,password);await updateProfile(user,{displayName:name.trim()});await api.post('/api/auth/register',{name:name.trim(),username:username.trim().toLowerCase(),avatar:user.photoURL||null});onComplete();}catch(e:any){setError(String(e?.message||'Could not complete registration.').replace('Firebase: ',''));}finally{setSaving(false)}};
- return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact/><h1>COMPLETE REGISTRATION</h1><span>CONTINUE WITH GOOGLE</span></div><div className='auth-card'><p>Your Google account is connected. Create your Pardais Lite password and username once. Your username cannot be changed later.</p><AuthField label='NAME' value={name} type='text' placeholder='Your name' icon={<UserRound/>} onChange={setName}/><AuthField label='USERNAME' value={username} type='text' placeholder='@username' icon={<UserRound/>} onChange={v=>setUsername(v.replace(/\s/g,''))}/><AuthField label='PASSWORD' value={password} type='password' placeholder='Create password' icon={<LockKeyhole/>} onChange={setPassword}/><AuthField label='CONFIRM PASSWORD' value={confirm} type='password' placeholder='Confirm password' icon={<LockKeyhole/>} onChange={setConfirm}/><AuthError message={error}/><button className='auth-primary' disabled={saving} onClick={()=>void submit()}>{saving?'Saving...':'Continue to Pardais'}</button></div></main>;
+ return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact/><h1>COMPLETE REGISTRATION</h1><span>CONTINUE WITH GOOGLE</span></div><div className='auth-card'><p>Your Google account is connected. Create your Pardais Lite password and username once. Your username cannot be changed later.</p><AuthField label='NAME' value={name} type='text' placeholder='Your name' icon={<UserRound/>} onChange={setName}/><AuthField label='USERNAME' value={username} type='text' placeholder='@username' icon={<UserRound/>} onChange={(v:string)=>setUsername(v.replace(/\s/g,''))}/><AuthField label='PASSWORD' value={password} type='password' placeholder='Create password' icon={<LockKeyhole/>} onChange={setPassword}/><AuthField label='CONFIRM PASSWORD' value={confirm} type='password' placeholder='Confirm password' icon={<LockKeyhole/>} onChange={setConfirm}/><AuthError message={error}/><button className='auth-primary' disabled={saving} onClick={()=>void submit()}>{saving?'Saving...':'Continue to Pardais'}</button></div></main>;
 }
 
 function AuthHeader({ title, subtitle, onBack }: { title: string; subtitle: string; onBack: () => void }) { return <div className='auth-header'><button onClick={onBack}><ChevronLeft /></button><div><h1>{title}</h1><span>{subtitle}</span></div></div>; }
@@ -353,6 +353,226 @@ function FollowRow({ item, tab, onToggle }: any) {
   const run = async () => { if (!onToggle || isFriendTab) return; setBusy(true); await onToggle(item.id, isFollowingTab); setBusy(false); };
   return <div className="follow-row"><div className="follow-avatar">{item.avatar || String(item.name || 'P').slice(0, 1).toUpperCase()}</div><div className="follow-person"><b>{item.name || 'Pardais User'}</b><span>{item.username || `@${String(item.id).replace(/^user-/, '')}`}</span></div><button disabled={busy} className={isFriendTab ? 'outline-action' : isFollowingTab ? 'outline-action' : 'pink-action'} onClick={() => void run()}>{busy ? '...' : action}</button></div>;
 }
+
+const PaperclipIcon = Paperclip;
+const MicIcon = Mic;
+
+function CreatorCenterPage({ onBack }: any) {
+  const [earnings, setEarnings] = useState(0);
+  const [message, setMessage] = useState('');
+  const [historyTab, setHistoryTab] = useState<'All' | 'Received' | 'Exchange'>('All');
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const userId = auth.currentUser?.uid || '';
+  const refresh = async () => { const r = await api.get(`/api/creator/${userId}`); setEarnings(Number(r.data?.earnings ?? 0)); setTransactions(r.data?.transactions ?? []); };
+  useEffect(() => { void refresh().catch(() => setMessage('Unable to load creator earnings.')); }, []);
+  const exchange = async () => { const raw = window.prompt('Enter coins to exchange into your wallet'); const coins = Number(raw); if (!Number.isInteger(coins) || coins <= 0) return setMessage('Enter a valid whole coin amount.'); try { const r = await api.post('/api/creator/exchange', { userId, coins }); setMessage(`${r.data.coins} coins exchanged to Wallet.`); await refresh(); } catch { setMessage('Exchange failed. Check your available creator earnings.'); } };
+  const withdraw = async () => { const raw = window.prompt('Enter coins to withdraw to your bank/wallet'); const amount = Number(raw); if (!Number.isFinite(amount) || amount <= 0) return setMessage('Enter a valid withdrawal amount.'); try { await api.post('/api/withdrawals', { userId, amount, method: 'bank', status: 'pending' }); setMessage('Withdrawal request submitted for bank payment.'); await refresh(); } catch { setMessage('Withdrawal request failed.'); } };
+  const addAccount = async () => { const account = window.prompt('Enter bank account / wallet number'); if (!account?.trim()) return; try { await api.post('/api/creator/withdraw-account', { userId, method: 'bank', account: account.trim() }); setMessage('Withdraw account saved.'); } catch { setMessage('Could not save withdraw account.'); } };
+  const visible = historyTab === 'All' ? transactions : transactions.filter(x => historyTab === 'Received' ? x.receiverId === userId : x.userId === userId && x.coins);
+  return <SubLayout title="Creator Center" onBack={onBack}>
+    <div className="creator-earnings"><div><span>CURRENT EARNINGS</span><strong>🪙 {earnings.toLocaleString()}</strong></div><button onClick={() => void refresh()}><span>↻</span></button><div className="creator-actions"><button onClick={() => void withdraw()}>Withdraw</button><button onClick={() => void exchange()}>Exchange</button></div></div>
+    {message && <div className="transfer-success"><div>✓</div><p>{message}</p></div>}
+    <button className="withdraw-account" onClick={() => void addAccount()}><span className="plus-box">＋</span><div><b>Add Withdraw Account</b><small>Add bank or wallet to receive payments</small></div><ChevronRight /></button>
+    <div className="analytics-head"><h2>Analytics</h2><button onClick={() => setMessage('Analytics filter set to Last 30 Days.')}>Last 30 Days⌄</button></div>
+    <div className="analytics-grid"><Metric icon="◉" value="36" label="Total Viewers" change="+12%" /><Metric icon="♧" value="72" label="Total Followers" change="+8%" /><Metric icon="◷" value="0.5h" label="Stream Hours" change="+5%" /><Metric icon="◇" value={earnings.toLocaleString()} label="Gifts Received" change="Live" /></div>
+    <h2 className="transaction-title">Transaction History</h2>
+    <div className="transaction-tabs">{(['All','Received','Exchange'] as const).map(x => <button key={x} className={historyTab === x ? 'active' : ''} onClick={() => setHistoryTab(x)}>{x}</button>)}</div>
+    <div className="transaction-list">{visible.length ? visible.map((x, i) => <Transaction key={i} day={String(x.createdAt ?? '').slice(0, 10) || 'Today'} count={String(x.type ?? 'Transaction')} amount={String(x.coins ?? x.amount ?? 0)} />) : <div className="empty-history">No {historyTab.toLowerCase()} transactions yet.</div>}</div>
+  </SubLayout>;
+}
+
+function Metric({ icon, value, label, change }: any) {
+  return <div className="metric"><div className="metric-top"><span>{icon}</span><b>{change}</b></div><strong>{value}</strong><small>{label}</small></div>;
+}
+function Transaction({ day, count, amount }: any) {
+  return <div className="transaction"><div><b>{day}</b><small>{count}</small></div><div><strong>{amount}</strong><small>Coins</small></div><ChevronRight /></div>;
+}
+
+function AgencyCenterPage({ onBack, onCoinSeller, onHostAgency }: any) {
+  return <SubLayout title="Agency Center" onBack={onBack}>
+    <div className="agency-center-intro"><div className="agency-icon">♛</div><h2>Agency Center</h2><p>Choose the agency program you want to manage.</p></div>
+    <div className="agency-choice-list">
+      <button className="agency-choice coin-choice" onClick={onCoinSeller}><span className="agency-choice-icon">🪙</span><div><b>Coin Seller Agency</b><small>Manage agency coins, transfer to users and view transaction history.</small></div><ChevronRight /></button>
+      <button className="agency-choice host-choice" onClick={onHostAgency}><span className="agency-choice-icon">👥</span><div><b>Host Agency</b><small>Recruit hosts, manage your team and track host performance.</small></div><ChevronRight /></button>
+    </div>
+    <div className="agency-center-note"><ShieldCheck /><div><b>Agency tools</b><small>Coin transfers are PIN protected. Host management stays inside your agency.</small></div></div>
+  </SubLayout>;
+}
+
+function CoinSellerAgencyPage({ onBack }: any) {
+  const [balance,setBalance]=useState(0); const [history,setHistory]=useState<any[]>([]); const [users,setUsers]=useState<any[]>([]); const [query,setQuery]=useState(''); const [amount,setAmount]=useState(''); const [pin,setPin]=useState(''); const [message,setMessage]=useState(''); const userId=auth.currentUser?.uid||'';
+  const load=async()=>{try{const [w,h]=await Promise.all([api.get(`/api/wallet/${userId}`),api.get(`/api/wallet/${userId}/transactions`)]);setBalance(Number(w.data?.wallet?.coins||0));setHistory(h.data?.items||[]);}catch{setMessage('Unable to load agency wallet.')}};
+  useEffect(()=>{void load()},[]);
+  useEffect(()=>{if(!query.trim()){setUsers([]);return} void api.get(`/api/users/search?q=${encodeURIComponent(query.trim())}`).then(r=>setUsers(r.data?.items||[])).catch(()=>setUsers([]))},[query]);
+  const transfer=async(target:any)=>{const coins=Number(amount);if(!target?.id||!Number.isInteger(coins)||coins<=0||!/^[0-9]{4}$/.test(pin)){setMessage('Enter a valid user, whole coin amount and 4-digit PIN.');return} try{const r=await api.post('/api/wallet/transfer',{userId,receiverId:target.id,receiverUsername:target.username,coins,pin});setMessage(`${coins} coins transferred to ${target.username}.`);setAmount('');setPin('');setQuery('');setUsers([]);setBalance(Number(r.data?.balance??balance-coins));await load()}catch{setMessage('Transfer failed. Check balance, username and PIN.')}};
+  return <SubLayout title="Coin Seller Agency" onBack={onBack}>
+    <div className="wallet-balance"><span>Available Balance</span><strong>🪙 {balance.toLocaleString()}</strong><WalletCards /></div>
+    {message&&<div className="transfer-success"><div>✓</div><p>{message}</p></div>}
+    <label className="transfer-label">SEARCH USER</label><div className="transfer-search"><Search/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="@username"/><span>Real users</span></div>
+    {users.length>0&&<div className="user-search-results">{users.map((u:any)=><div key={u.id} className="selected-transfer-user"><span>{u.avatar||String(u.name||'P').slice(0,1)}</span><div><b>{u.name}</b><small>{u.username}</small></div><button onClick={()=>void transfer(u)}>Send</button></div>)}</div>}
+    <label className="transfer-label">COINS</label><div className="coin-amount-input"><span>🪙</span><input inputMode="numeric" value={amount} onChange={e=>setAmount(e.target.value.replace(/\D/g,''))} placeholder="Enter coins"/></div>
+    <label className="transfer-label">4-DIGIT PIN</label><input className="pin-input" inputMode="numeric" maxLength={4} value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,''))} placeholder="••••"/>
+    <h2 className="transaction-title">Transaction History</h2><div className="transaction-list">{history.length?history.map((x:any,i:number)=><Transaction key={i} day={String(x.createdAt||'').slice(0,10)||'Today'} count={String(x.type||'Wallet')} amount={String(x.coins||0)}/>):<div className="empty-history">No wallet transactions yet.</div>}</div>
+  </SubLayout>;
+}
+
+function HostAgencyPage({ onBack }: any) {
+  const [hosts,setHosts]=useState<any[]>([]); const uid=auth.currentUser?.uid||'';
+  useEffect(()=>{void api.get(`/api/following/${uid}`).then(r=>setHosts(r.data?.items||[])).catch(()=>setHosts([]))},[uid]);
+  return <SubLayout title="Host Agency" onBack={onBack}>
+    <div className="agency-center-intro"><div className="agency-icon">👥</div><h2>Host Agency</h2><p>Only real Pardais users are shown here.</p></div>
+    <div className="host-list">{hosts.length?hosts.map((x:any)=><div className="host-row" key={x.id}><span className="host-avatar">{x.avatar||String(x.name||'P').slice(0,1)}</span><div className="host-copy"><b>{x.name}</b><small>{x.username}</small><span>Registered Pardais user</span></div><div className="host-status active">Active</div></div>):<div className="empty-state"><Users/><b>No hosts yet</b><span>Real hosts will appear here after they are registered and connected.</span></div>}</div>
+  </SubLayout>;
+}
+
+function WalletPage({ onBack }: any) {
+  const packs = [['STARTER','100','PKR 225'],['STARTER1','200','PKR 450'],['SMART','300','PKR 675'],['SMART 2','500','PKR 1,125'],['SMARTER','750','PKR 1,688'],['STANDARD 2','1,000','PKR 2,250']];
+  const [tab, setTab] = useState<'RECHARGE' | 'HISTORY'>('RECHARGE');
+  const [coins, setCoins] = useState(0);
+  const [history, setHistory] = useState<any[]>([]);
+  const [message, setMessage] = useState('');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
+  const [pin, setPin] = useState('');
+  const [transferError, setTransferError] = useState('');
+  const userId = auth.currentUser?.uid || '';
+  const loadWallet = async () => { const r = await api.get(`/api/wallet/${userId}`); setCoins(Number(r.data?.wallet?.coins ?? 0)); const h = await api.get(`/api/wallet/${userId}/transactions`); setHistory(h.data?.items ?? []); };
+  useEffect(() => { void loadWallet().catch(() => setMessage('Unable to load wallet.')); }, []);
+  const choosePack = async (packCoins: string, price: string) => { try { await api.post('/api/wallet/recharge-intent', { userId, coins: packCoins, amount: price }); setMessage(`${packCoins} coins recharge intent created. Payment can be completed when the payment gateway is connected.`); } catch { setMessage('Recharge request failed.'); } };
+  const transferCoins = async () => {
+    const target = recipient.trim();
+    const value = Number(amount);
+    if (!target) return setTransferError('Enter the recipient username.');
+    if (!Number.isInteger(value) || value <= 0) return setTransferError('Enter a valid whole coin amount.');
+    if (!/^\d{4}$/.test(pin)) return setTransferError('Enter a 4-digit transfer PIN.');
+    try {
+      const receiverId = `user-${target.replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`;
+      const r = await api.post('/api/wallet/transfer', { userId, receiverId, receiverUsername: target.startsWith('@') ? target : `@${target}`, coins: value, pin });
+      setCoins(Number(r.data?.balance ?? Math.max(0, coins - value))); setMessage(`${value.toLocaleString()} coins transferred to ${target}.`); setRecipient(''); setAmount(''); setPin(''); setTransferError(''); setTransferOpen(false); await loadWallet();
+    } catch { setTransferError('Transfer failed. Check the username, balance and PIN.'); }
+  };
+  return <SubLayout title="Wallet" onBack={onBack}>
+    <div className="wallet-balance"><span>Available Balance</span><strong>🪙 {coins.toLocaleString()}</strong><WalletCards /></div>
+    <button className="wallet-transfer-button" onClick={() => { setTransferOpen(true); setTransferError(''); }}><Send /> Transfer Coins <ChevronRight /></button>
+    <div className="wallet-tabs"><button className={tab === 'RECHARGE' ? 'active' : ''} onClick={() => setTab('RECHARGE')}>RECHARGE</button><button className={tab === 'HISTORY' ? 'active' : ''} onClick={() => setTab('HISTORY')}>HISTORY</button></div>
+    {message && <div className="transfer-success"><div>✓</div><p>{message}</p></div>}
+    {tab === 'RECHARGE' ? <div className="coin-grid">{packs.map(([name, packCoins, price]) => <button className="coin-pack" key={name} onClick={() => void choosePack(packCoins, price)}><b>{name}</b><strong>🪙 {packCoins}</strong><span>{price}</span></button>)}</div> : <div className="agency-history-list">{history.length ? history.map((x, i) => <div className="agency-history-row" key={i}><span className="history-arrow">{Number(x.coins) < 0 ? '↑' : '↓'}</span><div><b>{x.counterpartyUsername || 'Creator Center'}</b><small>{x.type}</small><em>WALLET TRANSFER</em></div><div><strong className={Number(x.coins) < 0 ? 'sent-amount' : 'received-amount'}>{Number(x.coins) > 0 ? '+' : ''}{x.coins}</strong><small>Balance: {x.balanceAfter}</small></div></div>) : <div className="empty-history">No wallet transactions yet.</div>}</div>}
+    {transferOpen && <div className="agency-modal-backdrop" onClick={e => { if (e.target === e.currentTarget) setTransferOpen(false); }}><div className="agency-transfer-sheet"><div className="sheet-handle" /><div className="transfer-sheet-head"><div><h2>Transfer Coins</h2><small>Send coins to another Pardais user</small></div><button onClick={() => setTransferOpen(false)}><X /></button></div><label className="transfer-label">USERNAME</label><div className="transfer-search"><Search /><input value={recipient} onChange={e => { setRecipient(e.target.value); setTransferError(''); }} placeholder="@username" /><span>Search</span></div><label className="transfer-label">COINS</label><div className="coin-amount-input"><span>🪙</span><input inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="Enter coins" /></div><label className="transfer-label">4-DIGIT PIN</label><input className="pin-input" inputMode="numeric" maxLength={4} value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} placeholder="••••" />{transferError && <div className="transfer-error">{transferError}</div>}<button className="confirm-transfer" onClick={() => void transferCoins()}>Transfer Coins</button></div></div>}
+  </SubLayout>;
+}
+
+function SettingsPage({ onBack, onNotifications, onLevel, onWallet, onBlocked }: any) {
+  const [privateAccount, setPrivateAccount] = useState(false);
+  const [language, setLanguage] = useState('English');
+  const [message, setMessage] = useState('');
+  const userId = auth.currentUser?.uid || '';
+  useEffect(() => { void api.get(`/api/settings/${userId}`).then(r => { setPrivateAccount(Boolean(r.data?.settings?.privateAccount)); setLanguage(String(r.data?.settings?.language ?? 'English')); }).catch(() => {}); }, []);
+  const save = async (patch: Record<string, unknown>) => { try { await api.put(`/api/settings/${userId}`, patch); setMessage('Settings saved.'); } catch { setMessage('Could not save setting.'); } };
+  const logout = () => { void signOut(auth); };
+  const deleteAccount = async () => { if (!window.confirm('Delete your account? Your account will be scheduled for permanent deletion after 30 days. You can recover it yourself during this 30-day period using your account email.')) return; let email = ''; try { email = localStorage.getItem('pardaisLiteEmail') || ''; } catch {} try { const r = await api.post('/api/account/delete-request', { userId, email }); const until = r.data?.recoveryUntil ? new Date(r.data.recoveryUntil).toLocaleDateString() : '30 days'; setMessage(`Account deletion scheduled. You can recover your account by email within 30 days (until ${until}).`); } catch { setMessage('Could not submit deletion request.'); } };
+  return <SubLayout title="Settings" onBack={onBack}>
+    <section><h3>ACCOUNT</h3><div className="settings-card">
+      <SettingRow icon={<LockKeyhole />} label="Private Account" toggle value={privateAccount} onClick={() => { const next = !privateAccount; setPrivateAccount(next); void save({ privateAccount: next }); }} />
+      {privateAccount && <div className="setting-private-info">Private mode hides your videos, level, followers/following and messaging from visitors. Your live entry and gift MVP identity are also hidden.</div>}
+      <SettingRow icon={<Ban />} label="Blocked Viewers" onClick={onBlocked} />
+      <SettingRow icon={<LockKeyhole />} label="Level System" onClick={onLevel} />
+      <SettingRow icon={<ShieldCheck />} label="Terms & Privacy Policy" onClick={() => window.open('https://pardaislive.com/', '_blank', 'noopener,noreferrer')} />
+      <SettingRow icon={<WalletCards />} label="Wallet" onClick={onWallet} />
+      <SettingRow icon={<Trash2 />} label="Delete Account" onClick={() => void deleteAccount()} />
+    </div></section>
+    {message && <div className="transfer-success"><div>✓</div><p>{message}</p></div>}
+    <section><h3>CONTENT & ACTIVITY</h3><div className="settings-card"><SettingRow icon={<Bell />} label="Notifications" onClick={onNotifications} /><SettingRow icon={<Languages />} label="Language" value={language} onClick={() => { const next = window.prompt('Language', language); if (next?.trim()) { setLanguage(next.trim()); void save({ language: next.trim() }); } }} /></div></section>
+    <section><h3>SUPPORT</h3><div className="settings-card"><SettingRow icon={<CircleHelp />} label="Help Center" onClick={() => { setMessage('Support: pardaisliveofficial@gmail.com'); window.location.href = 'mailto:pardaisliveofficial@gmail.com?subject=Pardais%20Lite%20Support'; }} /><SettingRow icon={<TriangleAlert />} label="Report a Problem" onClick={() => { const text = window.prompt('Describe the problem'); if (text?.trim()) void api.post('/api/actions', { action: 'report_problem', label: 'Report a Problem', screen: 'settings', userId, metadata: { description: text.trim() } }).then(() => setMessage('Problem report submitted.')); }} /></div></section>
+    <button className="logout" onClick={logout}><LogOut /> Log Out</button><div className="version">Version 1.3.4 Build: 16.09.2026</div>
+  </SubLayout>;
+}
+
+function BlockedViewersPage({ onBack }: any) { return <SubLayout title="Blocked Viewers" onBack={onBack}><div className="empty-state"><Ban /><b>No blocked viewers</b><span>Users you block from your live streams will appear here.</span></div></SubLayout>; }
+
+function SettingRow({ icon, label, value, toggle, onClick }: any) {
+  return <button className="setting-row" onClick={onClick}><span className="setting-icon">{icon}</span><span className="setting-label">{label}</span>{toggle ? <span className={value ? 'toggle on' : 'toggle'}><i /></span> : value ? <><span className="setting-value">{value}</span><ChevronRight /></> : <ChevronRight />}</button>;
+}
+
+function NotificationsPage({ onBack }: any) {
+  const items = [
+    ['New Follower','Jannat40 started following you.','2h ago','P'],
+    ['New Follower','Ahmadofficial started following you.','3h ago','P'],
+    ['New Follower','AbidH888 started following you.','3h ago','P'],
+    ['🎁 Live Gift Received','☠ Saif Khokhar ☠ sent you heart (0.18 coins) on your live ...','3h ago','🪽'],
+    ['🎁 Live Gift Received','☠ Saif Khokhar ☠ sent you Fireworks (24.3 coins) on your ...','3h ago','🪽'],
+    ['New Follower','RANAHOOR started following you.','3h ago','P']
+  ];
+  return <SubLayout title="Notifications" onBack={onBack} right="Mark all read"><div className="notifications-list">{items.map((x, i) => <div className="notification-item" key={i}><div className="notification-avatar">{x[3]}</div><div className="notification-copy"><b>{x[0]}</b><p>{x[1]}</p><small>{x[2]}</small></div><i className="unread-dot" /></div>)}</div></SubLayout>;
+}
+
+function EditProfilePage({ onBack }: any) {
+  const userId = auth.currentUser?.uid || '';
+  const [form, setForm] = useState({ firstName: '', lastName: '', gender: '', dateOfBirth: '', bio: '', whatsapp: '', facebook: '', instagram: '', youtube: '' });
+  const [message, setMessage] = useState('');
+  useEffect(() => { void api.get(`/api/profile/${userId}`).then(r => setForm(v => ({ ...v, ...r.data?.profile }))).catch(() => {}); }, []);
+  const set = (key: string, value: string) => setForm(v => ({ ...v, [key]: value }));
+  const save = async () => { try { await api.put(`/api/profile/${userId}`, form); setMessage('Profile saved successfully.'); } catch { setMessage('Could not save profile.'); } };
+  const editableField = (label: string, key: string, value: string) => <label className='field'><span className='field-label'>{label}</span><div className='input-box'><input value={value} onChange={e => set(key, e.target.value)} /></div></label>;
+  return <SubLayout title="Edit Profile" onBack={onBack} right={<span onClick={() => void save()}>Save</span>}><div className="edit-profile">
+    {message && <div className='transfer-success'><div>✓</div><p>{message}</p></div>}
+    <div className="edit-avatar-wrap"><div className="edit-avatar">🪽</div><button><Camera /></button></div><p className="change-picture">Tap to change profile picture</p>
+    <div className="name-grid">{editableField('FIRST NAME','firstName',form.firstName)}{editableField('LAST NAME','lastName',form.lastName)}</div>
+    {editableField('GENDER','gender',form.gender)}{editableField('DATE OF BIRTH','dateOfBirth',form.dateOfBirth)}
+    <label className='field'><span className='field-label'>BIO <span>{form.bio.length}/30</span></span><div className='input-box'><input maxLength={30} value={form.bio} onChange={e => set('bio', e.target.value)} placeholder='Tell us about yourself...' /></div></label>
+    {editableField('WHATSAPP NUMBER','whatsapp',form.whatsapp)}
+    <h2 className="edit-section">Social Media Links</h2>
+    {editableField('FACEBOOK URL','facebook',form.facebook)}{editableField('INSTAGRAM URL','instagram',form.instagram)}{editableField('YOUTUBE URL','youtube',form.youtube)}
+    <h2 className="edit-section">Account Settings</h2>
+    <SimpleRow label="Change Password" icon={<LockKeyhole />} /><SimpleRow label="Privacy Settings" icon={<ShieldCheck />} /><SimpleRow label="Notification Preferences" icon={<Bell />} />
+  </div></SubLayout>;
+}
+
+function Field({ label, value, icon }: any) {  return <label className="field"><span className="field-label">{label}</span><div className="input-box">{icon || <UserRound />}{value}<ChevronRight className="field-chevron" /></div></label>;
+}
+
+function SimpleRow({ label, icon }: any) { return <button className="simple-row"><span>{icon}</span>{label}<ChevronRight /></button>; }
+
+function FollowersPage({ active, setActive, onBack }: any) {
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const userId = auth.currentUser?.uid || '';
+  const load = async () => {
+    setLoading(true);
+    try {
+      const path = active === 'Followers' ? `/api/followers/${encodeURIComponent(userId)}` : active === 'Following' ? `/api/following/${encodeURIComponent(userId)}` : `/api/friends/${encodeURIComponent(userId)}`;
+      const r = await api.get(path);
+      setItems(r.data?.items ?? []);
+      setMessage('');
+    } catch {
+      setItems([]);
+      setMessage('Unable to load this list.');
+    } finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); }, [active]);
+  const toggleFollow = async (targetId: string, following: boolean) => {
+    try {
+      await api.post('/api/follow', { followerId: userId, followingId: targetId, action: following ? 'unfollow' : 'follow' });
+      await load();
+    } catch { setMessage('Could not update the follow relationship.'); }
+  };
+  return <SubLayout title="@khokhar_1" onBack={onBack} right={<Search />}>
+    <div className="follow-tabs">{(['Followers','Following','Friends'] as FollowTab[]).map(x => <button key={x} className={active === x ? 'selected' : ''} onClick={() => setActive(x)}>{x === 'Friends' ? '♧ Friends' : x}</button>)}</div>
+    {message && <div className="transfer-error" style={{ margin: '12px 16px' }}>{message}</div>}
+    {loading ? <div className="empty-history">Loading...</div> : items.length ? <div className="follow-list">{items.map(item => <FollowRow key={item.id} item={item} tab={active} onToggle={toggleFollow} />)}</div> : <div className="empty-state"><Users /><b>No {active.toLowerCase()} yet</b><span>Real {active.toLowerCase()} will appear here when users connect with your account.</span></div>}
+  </SubLayout>;
+}
+
+function FollowRow({ item, tab, onToggle }: any) {
+  const [busy, setBusy] = useState(false);
+  const isFollowingTab = tab === 'Following';
+  const isFriendTab = tab === 'Friends';
+  const action = isFollowingTab ? 'Unfollow' : isFriendTab ? 'Message' : 'Follow back';
+  const run = async () => { if (!onToggle || isFriendTab) return; setBusy(true); await onToggle(item.id, isFollowingTab); setBusy(false); };
+  return <div className="follow-row"><div className="follow-avatar">{item.avatar || String(item.name || 'P').slice(0, 1).toUpperCase()}</div><div className="follow-person"><b>{item.name || 'Pardais User'}</b><span>{item.username || `@${String(item.id).replace(/^user-/, '')}`}</span></div><button disabled={busy} className={isFriendTab ? 'outline-action' : isFollowingTab ? 'outline-action' : 'pink-action'} onClick={() => void run()}>{busy ? '...' : action}</button></div>;
+}
+
 
 function SubLayout({ title, onBack, right, children }: any) {
   return <main className="sub-page"><header className="sub-header"><button onClick={onBack}><ChevronLeft /></button><h1>{title}</h1>{right ? <button className="header-right">{typeof right === 'string' ? right : right}</button> : <span />}</header>{children}</main>;
