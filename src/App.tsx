@@ -255,7 +255,7 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
         <button onClick={()=>setMenuOpen(true)} aria-label='More options'><MoreHorizontal/><span>More</span></button>
       </div>
       <div className='reel-meta reference-reel-meta'>
-        <div className='reel-user-line'><button className='creator-name' onClick={()=>onOpenProfile(String(r.userId))}>{r.author?.name||'Pardais User'}</button>{String(r.userId)!==String(auth.currentUser?.uid||'')&&<button className='creator-follow' disabled={followBusy||r.viewerFollowing} onClick={()=>void follow()}>{r.viewerFollowing?'Following':'+'}</button>}</div>
+        <div className='reel-user-line'><span className='creator-name-wrap'><button className='creator-name' onClick={()=>onOpenProfile(String(r.userId))}>{r.author?.name||'Pardais User'}</button><span className='creator-verified' aria-label='Verified'>✓</span></span>{String(r.userId)!==String(auth.currentUser?.uid||'')&&<button className='creator-follow' disabled={followBusy||r.viewerFollowing} onClick={()=>void follow()}>{r.viewerFollowing?'Following':'Follow'}</button>}</div>
         <p>{r.caption||''}</p>{Array.isArray(r.hashtags)&&r.hashtags.length>0&&<div className='reel-hashtags'>{r.hashtags.map((h:string)=><span key={h}>#{h.replace(/^#/,'')}</span>)}</div>}
       </div>
       {menuOpen&&i===index&&<div className='reel-more-menu'><button onClick={download}>Download</button><button onClick={save}>{r.savedByMe?'Remove from Saved':'Save'}</button>{r.userId===auth.currentUser?.uid&&<><button onClick={makePrivate}>Make Private</button><button className='danger' onClick={deleteReel}>Delete Video</button></>}</div>}

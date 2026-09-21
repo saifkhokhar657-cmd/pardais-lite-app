@@ -255,3 +255,42 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .home-feed-screen .home-sound-toggle{position:absolute!important;right:14px!important;top:92px!important;z-index:12!important;width:40px!important;height:40px!important;border-radius:50%!important;display:grid!important;place-items:center!important;background:rgba(0,0,0,.48)!important;color:#fff!important;border:1px solid rgba(255,255,255,.25)!important;backdrop-filter:blur(8px)!important}
 .home-feed-screen .home-sound-toggle svg{width:21px!important;height:21px!important}
 @media(max-width:430px){.home-feed-screen .home-sound-toggle{right:10px!important;top:88px!important;width:38px!important;height:38px!important}}
+
+
+/* Pardais Lite V14 — tighter creator profile + verified follow row */
+.home-feed-screen .reel-author-block{bottom:400px!important}
+.home-feed-screen .home-dp-plus{
+  right:auto!important;
+  left:50%!important;
+  bottom:-11px!important;
+  transform:translateX(-50%)!important;
+  width:24px!important;
+  height:24px!important;
+  border-radius:50%!important;
+  display:grid!important;
+  place-items:center!important;
+  font-size:17px!important;
+  line-height:1!important;
+  z-index:3!important
+}
+.home-feed-screen .reel-user-line .creator-name-wrap{
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:5px!important
+}
+.home-feed-screen .reel-user-line .creator-verified{
+  width:17px!important;
+  height:17px!important;
+  display:inline-grid!important;
+  place-items:center!important;
+  border-radius:50%!important;
+  background:#1688ff!important;
+  color:#fff!important;
+  font-size:11px!important;
+  font-weight:900!important;
+  line-height:1!important;
+  box-shadow:0 1px 3px rgba(0,0,0,.35)!important
+}
+@media(max-width:430px){
+  .home-feed-screen .reel-author-block{bottom:400px!important}
+}
