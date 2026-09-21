@@ -82,3 +82,6 @@ Also set:
 - `FIREBASE_PROJECT_ID=pardais-lite-production`
 
 After adding/updating variables, deploy the staged changes. Railway variables are injected into the running service as environment variables.
+
+## Firebase Web config
+The browser Firebase SDK uses only the VITE_FIREBASE_* variables at build time. No hardcoded fallback API key is used.

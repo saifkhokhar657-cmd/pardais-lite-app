@@ -2,15 +2,32 @@ import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyBCmghRRZvulbvqv_aHGvsDQ6SoZf4gKA',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'pardais-lite-production.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'pardais-lite-production',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'pardais-lite-production.firebasestorage.app',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '233413127932',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:233413127932:web:d6802f84a3545de873179',
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-ZSW29BYVR',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
+
+const requiredFirebaseConfig: Array<[string, unknown]> = [
+  ['VITE_FIREBASE_API_KEY', firebaseConfig.apiKey],
+  ['VITE_FIREBASE_AUTH_DOMAIN', firebaseConfig.authDomain],
+  ['VITE_FIREBASE_PROJECT_ID', firebaseConfig.projectId],
+  ['VITE_FIREBASE_STORAGE_BUCKET', firebaseConfig.storageBucket],
+  ['VITE_FIREBASE_MESSAGING_SENDER_ID', firebaseConfig.messagingSenderId],
+  ['VITE_FIREBASE_APP_ID', firebaseConfig.appId],
+];
+
+const missingFirebaseConfig = requiredFirebaseConfig
+  .filter(([, value]) => typeof value !== 'string' || !value.trim())
+  .map(([name]) => name);
+
+if (missingFirebaseConfig.length) {
+  throw new Error(`Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}`);
+}
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export { app };
+export { app, firebaseConfig };
