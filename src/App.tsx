@@ -331,6 +331,31 @@ function ProfileVideoArea({ mode }: { mode: 'Public' | 'Private' | 'Saved' | 'Dr
   </div>;
 }
 
+function FindFriendsPage({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const search = async () => {
+    const q = query.trim();
+    if (!q) { setItems([]); return; }
+    setLoading(true);
+    try {
+      const r = await api.get(`/api/users/search?q=${encodeURIComponent(q)}`);
+      setItems(r.data?.items || r.data?.users || []);
+    } catch { setItems([]); }
+    finally { setLoading(false); }
+  };
+  return <main className='full-dark-page'>
+    <header className='simple-page-head'><button onClick={onClose}><ChevronLeft/></button><h1>Find Friends</h1><span/></header>
+    <div style={{padding:16}}>
+      <div className='search-box'><Search/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void search()}} placeholder='Search users...' /><button onClick={()=>void search()}>Search</button></div>
+      {loading && <div className='empty-state'><span>Searching...</span></div>}
+      {!loading && query.trim() && !items.length && <div className='empty-state'><Users/><b>No users found</b><span>Try another name or username.</span></div>}
+      <div className='user-list'>{items.map((u:any)=><div className='user-row' key={u.id}><div className='user-avatar'>{u.avatar?<img src={u.avatar} alt=''/>:'P'}</div><div><b>{u.name || 'Pardais User'}</b><small>{u.username || ''}</small></div></div>)}</div>
+    </div>
+  </main>;
+}
+
 function UserProfilePage({ user, following, onFollow, onBack }: any) { const targetId=String(user?.id||''); const [data,setData]=useState<any>(null); useEffect(()=>{if(targetId)void api.get(`/api/users/${encodeURIComponent(targetId)}`).then(r=>setData(r.data?.user)).catch(()=>{})},[targetId]); return <main className='full-dark-page user-profile-page'><header className='simple-page-head'><button onClick={onBack}><ChevronLeft/></button><h1>Profile</h1><span/></header><section className='user-hero'><div className='user-big-avatar'>{data?.avatar?<img src={data.avatar} alt=''/>:'P'}</div><h2>{data?.name||'Pardais User'}</h2><p>{data?.username||''}</p><div className='user-actions'><button className={following?'following-btn':'follow-btn'} onClick={onFollow}>{following?'Following':'Follow'}</button></div></section></main>; }
 
 function LevelSystemPage({ onBack }: { onBack: () => void }) { const [user,setUser]=useState<any>(null); const uid=auth.currentUser?.uid||''; useEffect(()=>{void api.get(`/api/users/${encodeURIComponent(uid)}`).then(r=>setUser(r.data?.user)).catch(()=>{})},[uid]); const level=Math.max(1,Number(user?.level||1)); const levels=Array.from({length:51},(_,i)=>i); return <main className='full-dark-page level-page'><header className='simple-page-head level-head'><button onClick={onBack}><ChevronLeft/></button><h1>Level System</h1><span/></header><section className='current-level-card'><div className='level-card-title'>Level <b>{level}</b><span>Account level<br/><strong>Lv. {level}</strong></span></div><div className='level-progress'><i style={{width:`${Math.min(100,(level/50)*100)}%`}}/></div><div className='level-range'><span>1</span><span>50</span></div><div className='level-bottom'><div className='cobra-badge'>🐍<strong>{level}</strong></div><div className='next-level-box'>⭐ <span>Next Level<br/><b>{Math.min(50,level+1)}</b></span></div></div></section><div className='journey-head'><h2>Level Journey</h2><span>Scroll to view</span></div><div className='level-journey'>{levels.map(n=><button key={n} className={n===level?'level-badge current':n>0&&n<level?'level-badge unlocked':'level-badge'}><span>{n}</span><small>LV.{n}</small></button>)}</div></main>; }
