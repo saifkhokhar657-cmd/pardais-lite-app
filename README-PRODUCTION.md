@@ -66,3 +66,19 @@ The production server is `server.ts`. The old AppDeploy backend files are no lon
 
 ## Railway / Agora runtime fix
 The Agora token package is CommonJS. The server loads it with Node's `createRequire()` so the ESM production server does not attempt a named ESM import from `agora-token`. Agora's Node examples expose `RtcTokenBuilder` and `RtcRole` from the CommonJS module, and `buildTokenWithUid` accepts the token and privilege expiry values used here.
+
+
+## Railway Firebase Admin credential (required for Firestore/Auth API)
+
+The Railway container must have a Firebase Admin service-account credential at runtime. The server no longer crashes at boot when it is missing, but authenticated Firestore/Auth requests require it. Firebase recommends keeping service-account credentials in a secure server environment rather than source control.
+
+Set **one** of these Railway service variables:
+
+- `FIREBASE_SERVICE_ACCOUNT_BASE64` — recommended for Railway. Base64-encode the complete Firebase service-account JSON and paste the resulting single line.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` — the complete JSON as one Railway variable.
+- `GOOGLE_APPLICATION_CREDENTIALS` — only when the service-account JSON is mounted at that path.
+
+Also set:
+- `FIREBASE_PROJECT_ID=pardais-lite-production`
+
+After adding/updating variables, deploy the staged changes. Railway variables are injected into the running service as environment variables.

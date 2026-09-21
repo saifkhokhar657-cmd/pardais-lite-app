@@ -6,7 +6,7 @@ import { add, get, list, now, remove, update, upsertUser } from './backend/fires
 import { requireAuth, assertSelf, type AuthenticatedRequest } from './backend/auth.js';
 import { buildRtcToken, numericAgoraUid } from './backend/agora.js';
 import { createDownloadUrl, createUploadUrl } from './backend/r2.js';
-import { db } from './backend/firebase-admin.js';
+import { db, firebaseCredentialsConfigured } from './backend/firebase-admin.js';
 import type { Transaction } from 'firebase-admin/firestore';
 
 const app = express();
@@ -21,7 +21,7 @@ app.get('/api/config', (_req, res) => res.json({
   appName: 'Pardais Lite', apiVersion: 'v1',
   realtime: { provider: 'agora', status: process.env.AGORA_APP_ID ? 'ready' : 'missing-credentials' },
   media: { provider: 'cloudflare-r2', status: process.env.R2_BUCKET_NAME ? 'ready' : 'missing-credentials' },
-  database: { provider: 'firebase-firestore', status: 'ready' },
+  database: { provider: 'firebase-firestore', status: firebaseCredentialsConfigured ? 'ready' : 'missing-service-account' },
   features: ['auth','profile','follow','feed','reels','live','pk','gifts','wallet','withdrawal','agency','chat','comments','notifications'],
 }));
 
