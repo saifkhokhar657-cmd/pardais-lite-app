@@ -3,7 +3,7 @@ import AgoraRTC, { type IAgoraRTCClient, type IAgoraRTCRemoteUser, type ICameraV
 import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound } from 'lucide-react';
 import { api } from './api';
 
-type Room = { id: string; channel: string; hostId: string; title?: string; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
+type Room = { id: string; channel: string; hostId: string; title?: string; topSupporters?: any[]; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
 
 export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => void }) {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
@@ -24,6 +24,9 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [likes, setLikes] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
+  const [filterOn, setFilterOn] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'front'|'back'>('front');
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
   const hostId = room.host?.username || room.host?.id || room.hostId || '1000259813';
@@ -104,6 +107,21 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     if (next && localVideoRef.current) camRef.current.play(localVideoRef.current);
   };
 
+  const rotateCamera = async () => {
+    if (!room.isHost || !camRef.current) return;
+    try {
+      const cameras = await AgoraRTC.getCameras();
+      if (!cameras.length) return;
+      const target = cameraFacing === 'front'
+        ? cameras.find((d: any) => /back|rear|environment/i.test(d.label)) || cameras[cameras.length - 1]
+        : cameras.find((d: any) => /front|user|facetime/i.test(d.label)) || cameras[0];
+      if (target) {
+        await camRef.current.setDevice(target.deviceId);
+        setCameraFacing(v => v === 'front' ? 'back' : 'front');
+      }
+    } catch {}
+  };
+
   const share = async () => {
     try { await navigator.share?.({ title: 'Pardais Lite Live', text: room.title || 'Join my live stream', url: window.location.href }); } catch {}
   };
@@ -119,7 +137,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const endBroadcast = () => { setEndConfirmOpen(false); onClose(); };
 
   return <div className="solo-live reference-solo-live">
-    <div ref={room.isHost ? localVideoRef : remoteVideoRef} className="solo-live-video" />
+    <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''}`} />
     {((room.isHost && !cameraOn) || (!room.isHost && !connected)) && <div className="solo-live-background" style={hostAvatar ? { backgroundImage: `url(${hostAvatar})` } : undefined}><div className="solo-live-background-shade" /></div>}
     <div className="solo-live-shade" />
 
@@ -133,6 +151,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
           <div className="solo-sub-row"><span>@{String(hostId).replace(/^@/, '')}</span><span className="solo-level">👑 Level {hostLevel}</span></div>
         </div>
       </div>
+      <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || ['A','S','M'][i]).slice(0,1)}</span>}</div>)}</div>
       <div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
         <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
@@ -140,12 +159,12 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </header>
 
     <div className="solo-stats">
-      <span><Eye /> <b>{viewerCount + (room.isHost ? 1 : 0)}</b><small>Views</small></span>
-      <span><Clock3 /> <b>{formatTime(elapsed)}</b><small>Time</small></span>
+      <span><Eye /> <b>{viewerCount + (room.isHost ? 1 : 0)}</b><small>Viewers</small></span>
+      <span><Clock3 /> <b>{formatTime(elapsed)}</b><small>Live Time</small></span>
       <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
-    {!cameraOn && room.isHost && <div className="solo-camera-off"><b>Camera is off</b><span>Your audio is live</span></div>}
+    {!cameraOn && room.isHost && <div className="solo-camera-off"><div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{hostName.slice(0,1).toUpperCase()}</span>}</div><b>Camera is off</b><span>Your audio is live</span></div>}
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
     <div className="solo-comments">
@@ -159,13 +178,20 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </div>
 
     <div className="solo-bottom-actions">
-      <button className="solo-invite" onClick={() => setInviteOpen(v => !v)}><UserPlus /><b>Invite</b></button>
-      <button className={micOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleMic()}><span>{micOn ? <Mic /> : <MicOff />}</span></button>
-      {room.isHost && <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()}>{cameraOn ? <Camera /> : <CameraOff />}</button>}
-      {!room.isHost && <button className="solo-round" onClick={() => setLiked(v => { const n = !v; setLikes(x => Math.max(0, x + (n ? 1 : -1))); return n; })}><Heart fill={liked ? 'currentColor' : 'none'} /></button>}
-      <button className="solo-round" onClick={() => setInviteOpen(v => !v)}><Sparkles /></button>
-      <button className="solo-round danger" onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Leave'}><PhoneOff /></button>
+      {room.isHost ? <button className="solo-invite" onClick={() => setInviteOpen(v => !v)}><UserPlus /><b>Invite</b></button> : <button className="solo-invite" onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button>}
+      {room.isHost ? <>
+        <button className={micOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleMic()} aria-label="Microphone">{micOn ? <Mic /> : <MicOff />}</button>
+        <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()} aria-label="Camera">{cameraOn ? <Camera /> : <CameraOff />}</button>
+        <button className="solo-round" onClick={() => void rotateCamera()} aria-label="Rotate camera">↻</button>
+        <button className={filterOn ? 'solo-round active' : 'solo-round'} onClick={() => setFilterOn(v => !v)} aria-label="Filter"><Sparkles /></button>
+        <button className="solo-round" onClick={() => setMoreOpen(v => !v)} aria-label="More">⋯</button>
+      </> : <>
+        <button className="solo-round" onClick={() => setLiked(v => { const n = !v; setLikes(x => Math.max(0, x + (n ? 1 : -1))); return n; })}><Heart fill={liked ? 'currentColor' : 'none'} /></button>
+        <button className="solo-round" onClick={() => setInviteOpen(v => !v)}><Sparkles /></button>
+        <button className="solo-round danger" onClick={onClose} aria-label="Leave"><PhoneOff /></button>
+      </>}
     </div>
+    {moreOpen && room.isHost && <div className="solo-more-pop"><b>More Controls</b><button onClick={() => setMoreOpen(false)}>Beauty / Effects</button><button onClick={() => setMoreOpen(false)}>Live Settings</button><button onClick={() => setMoreOpen(false)}>Close</button></div>}
 
     {inviteOpen && <div className="solo-invite-pop"><b><UsersRound /> Invite hosts</b><span>Available hosts will appear here.</span><button onClick={() => setInviteOpen(false)}>Close</button></div>}
     {error && <div className="solo-error">{error}</div>}
