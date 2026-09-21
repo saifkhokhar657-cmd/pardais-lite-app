@@ -35,12 +35,12 @@ if (process.env.NODE_ENV === 'production') {
 app.get('/firebase-config.js', (_req, res) => {
   const config = {
     apiKey: process.env.VITE_FIREBASE_API_KEY || '',
-    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'pardais-lite-production.firebaseapp.com',
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'pardais-lite-production',
-    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'pardais-lite-production.firebasestorage.app',
-    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '233413127932',
-    appId: process.env.VITE_FIREBASE_APP_ID || '1:233413127932:web:d6802f84a3545de873179',
-    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-ZSW29BYVR',
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || '',
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: process.env.VITE_FIREBASE_APP_ID || '',
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || '',
   };
   res
     .type('application/javascript')

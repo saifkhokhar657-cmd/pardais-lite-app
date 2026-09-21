@@ -89,3 +89,6 @@ The browser Firebase SDK reads the public Firebase Web config from `/firebase-co
 
 ## V12 startup fix
 The web bootstrap now renders the Pardais Lite splash before loading the React app. If a JavaScript module (including Firebase config) fails during startup, the splash remains visible and shows a refresh/error message instead of a blank dark screen.
+
+### Railway Firebase configuration
+Firebase Web variables are intentionally loaded at runtime from `/firebase-config.js` by the production Express server. The Vite build does not require `VITE_FIREBASE_*` variables, so Docker builds complete even when Railway does not expose service Variables inside Docker `RUN` steps. Make sure the six `VITE_FIREBASE_*` variables are present in the Railway service runtime environment before starting the deployed service.
