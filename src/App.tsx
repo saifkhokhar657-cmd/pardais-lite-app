@@ -1,5 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from './lib/api';
+const API_BASE = 'https://api.pardaislite.soulverseapps.com';
+
+const api = {
+  get: async (path: string) => {
+    const r = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`GET ${path} failed (${r.status})`);
+    return { data: await r.json() };
+  },
+  post: async (path: string, body?: unknown) => {
+    const r = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`POST ${path} failed (${r.status})`);
+    return { data: await r.json() };
+  },
+  put: async (path: string, body?: unknown) => {
+    const r = await fetch(`${API_BASE}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`PUT ${path} failed (${r.status})`);
+    return { data: await r.json() };
+  },
+  delete: async (path: string) => {
+    const r = await fetch(`${API_BASE}${path}`, { method: 'DELETE', headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`DELETE ${path} failed (${r.status})`);
+    return { data: await r.json() };
+  },
+};
 import {
   Bell, Ban, Bookmark, CalendarDays, Camera, ChevronLeft, ChevronRight, CircleHelp,
   Copy, Edit3, Gift, Globe2, Heart, Home, Image as ImageIcon, Languages, Link2,
@@ -237,7 +268,7 @@ function HomeScreen({ homeMode, setHomeMode, liked, setLiked, saved, setSaved, f
 function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, liveView, setLiveView }: any) {
   const hosts = [['THE THUNDER','@thethunder','⚡','SOLO','38','3m'],['Ai Mout','@mrunknown','🧔','PK','10','4m'],['Malang Sb','@shahshab','😎','SOLO','16','22m'],['Zara Zara','@Zarasikan','👩','PK','16','56m'],['Jannat 40','@Jannat40','🦋','GUEST','40','1m'],['RANA Rehanali','@RanaRehanali','🧑','SOLO','29','6m']];
   if (room) return <ViewerSoloLive onClose={() => setRoom(false)} />;
-  if (liveView === 'solo') return <SoloHostLive onClose={() => setLiveView('discover')} onGuestInvite={() => setLiveView('inviteGuest')} onPk={() => setLiveView('pkInvite')} />;
+  if (liveView === 'solo') return <SoloHostLive onClose={() => setLiveView('discover')} onGuestInvite={() => setLiveView('guestRoom')} onPk={() => setLiveView('pkInvite')} />;
   if (liveView === 'inviteGuest') return <InviteGuestPage onBack={() => setLiveView('solo')} onInvited={() => setLiveView('guestRoom')} />;
   if (liveView === 'guestRoom') return <GuestSeatRoom onClose={() => setLiveView('solo')} />;
   if (liveView === 'pkInvite') return <PkInvitePage onBack={() => setLiveView('solo')} onSent={() => setLiveView('pkWaiting')} />;
