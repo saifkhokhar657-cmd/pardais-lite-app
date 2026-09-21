@@ -1,4 +1,22 @@
-import { RtcRole, RtcTokenBuilder } from 'agora-token';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const agoraToken = require('agora-token') as {
+  RtcRole: { PUBLISHER: number; SUBSCRIBER: number };
+  RtcTokenBuilder: {
+    buildTokenWithUid: (
+      appId: string,
+      appCertificate: string,
+      channelName: string,
+      uid: number,
+      role: number,
+      tokenExpire: number,
+      privilegeExpire: number,
+    ) => string;
+  };
+};
+
+const { RtcRole, RtcTokenBuilder } = agoraToken;
 
 const appId = () => process.env.AGORA_APP_ID?.trim() || '';
 const certificate = () => process.env.AGORA_APP_CERTIFICATE?.trim() || '';

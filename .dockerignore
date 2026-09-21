@@ -5,5 +5,8 @@ dist-server
 .github
 .env
 .env.*
-!.env.example
-*.log
+*.jks
+*.keystore
+*.pem
+*.p12
+*.p8

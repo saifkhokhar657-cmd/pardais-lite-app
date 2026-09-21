@@ -63,3 +63,6 @@ Do not paste Firebase service-account JSON, Agora App Certificate, R2 Secret Acc
 
 ## Legacy AppDeploy cleanup
 The production server is `server.ts`. The old AppDeploy backend files are no longer used. CI removes legacy `backend/index.ts`, `backend/pardais.ts`, `backend/realtime-subscribers.ts`, and `backend/realtime.ts` before compilation so stale files in an existing repository cannot break the production build.
+
+## Railway / Agora runtime fix
+The Agora token package is CommonJS. The server loads it with Node's `createRequire()` so the ESM production server does not attempt a named ESM import from `agora-token`. Agora's Node examples expose `RtcTokenBuilder` and `RtcRole` from the CommonJS module, and `buildTokenWithUid` accepts the token and privilege expiry values used here.
