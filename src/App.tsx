@@ -8,7 +8,7 @@ import {
   Copy, Edit3, Gift, Globe2, Heart, Home, Image as ImageIcon, Languages, Link2,
   LockKeyhole, LogOut, MessageCircle, MessageSquare, Moon, MoreHorizontal, Palette,
   Mic, MicOff, Paperclip, Phone, Plus, Search, Send, Settings, Share2, ShieldCheck, Sparkles, Trash2,
-  TriangleAlert, UserPlus, UserRound, Users, Video, VideoOff, WalletCards, X, Zap
+  TriangleAlert, UserPlus, UserRound, Users, Video, VideoOff, Volume2, VolumeX, WalletCards, X, Zap
 } from 'lucide-react';
 
 type Tab = 'home' | 'live' | 'create' | 'inbox' | 'profile';
@@ -223,6 +223,7 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   const [menuOpen,setMenuOpen]=useState(false);
   const [giftOpen,setGiftOpen]=useState(false);
   const [giftBusy,setGiftBusy]=useState(false);
+  const [soundOn,setSoundOn]=useState(false);
   const [followBusy,setFollowBusy]=useState(false);
   const feedRef=useRef<HTMLDivElement|null>(null);
   const load=async()=>{try{const r=await api.get(`/api/feed?mode=${homeMode.toLowerCase().replace(' ','-')}`);setItems(r.data?.items||[]);setIndex(0)}catch{setItems([])}};
@@ -243,8 +244,8 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   return <main className='reel-screen home-feed-screen'>
     <div className='reel-top home-feed-top'><button className={homeMode==='Following'?'tab active':'tab muted'} onClick={()=>setHomeMode('Following')}>Following</button><button className={homeMode==='For You'?'tab active':'tab muted'} onClick={()=>setHomeMode('For You')}>For You</button><button className='search-icon' onClick={onSearch}><Search/></button></div>
     {!items.length?<div className='following-empty'><Video/><b>No videos yet</b><span>Real published reels will appear here.</span></div>:<div ref={feedRef} className='reel-feed-scroll'>{items.map((r,i)=><section className='reel-stage home-reel-stage' key={r.id} onDoubleClick={()=>void like()}>
-      <video src={r.mediaUrl} controls={false} autoPlay={i===index} muted loop playsInline className='home-reel-video'/><div className='reel-overlay'/>
-      <button className='reel-author-block' aria-label='Open creator profile' onClick={()=>onOpenProfile(String(r.userId))}><div className='home-dp'>{r.author?.avatar?<img src={r.author.avatar} alt=''/>:<span>{String(r.author?.name||'P').slice(0,1).toUpperCase()}</span>}</div></button>
+      <video src={r.mediaUrl} controls={false} autoPlay={i===index} muted={!soundOn} loop playsInline className='home-reel-video' onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/><button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
+      <button className='reel-author-block' aria-label='Open creator profile' onClick={()=>onOpenProfile(String(r.userId))}><div className='home-dp'>{r.author?.avatar?<img src={r.author.avatar} alt=''/>:<span>{String(r.author?.name||'P').slice(0,1).toUpperCase()}</span>}<span className='home-dp-plus'>+</span></div></button>
       <div className='reel-actions reference-reel-actions'>
         <button onClick={()=>void like()} aria-label='Like video'><Heart fill={r.likedByMe?'currentColor':'none'}/><span>{r.likesCount||0}</span></button>
         <button onClick={()=>{setCommentOpen(true);void loadComments()}} aria-label='Comments'><MessageCircle/><span>{r.commentsCount||0}</span></button>
