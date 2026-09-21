@@ -14,7 +14,10 @@ function firebaseRuntimeConfig(): Plugin {
   return {
     name: 'pardais-firebase-runtime-config',
     configResolved(config) {
-      const env = loadEnv(config.mode, config.root, '');
+      // Railway injects service Variables into process.env during the build.
+      // Vite's loadEnv() reads .env files and does not reliably include the
+      // platform process environment, so merge both sources explicitly.
+      const env = { ...loadEnv(config.mode, config.root, ''), ...process.env };
       const required = [
         'VITE_FIREBASE_API_KEY',
         'VITE_FIREBASE_AUTH_DOMAIN',
