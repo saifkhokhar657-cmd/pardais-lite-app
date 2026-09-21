@@ -1,36 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-const API_BASE = 'https://api.pardaislite.soulverseapps.com';
-
-const api = {
-  get: async (path: string) => {
-    const r = await fetch(`${API_BASE}${path}`, { headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error(`GET ${path} failed (${r.status})`);
-    return { data: await r.json() };
-  },
-  post: async (path: string, body?: unknown) => {
-    const r = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error(`POST ${path} failed (${r.status})`);
-    return { data: await r.json() };
-  },
-  put: async (path: string, body?: unknown) => {
-    const r = await fetch(`${API_BASE}${path}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error(`PUT ${path} failed (${r.status})`);
-    return { data: await r.json() };
-  },
-  delete: async (path: string) => {
-    const r = await fetch(`${API_BASE}${path}`, { method: 'DELETE', headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error(`DELETE ${path} failed (${r.status})`);
-    return { data: await r.json() };
-  },
-};
+import { createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut } from 'firebase/auth';
+import { auth } from './firebase';
+import { api } from './api';
+import { AgoraLiveRoom } from './AgoraLiveRoom';
 import {
   Bell, Ban, Bookmark, CalendarDays, Camera, ChevronLeft, ChevronRight, CircleHelp,
   Copy, Edit3, Gift, Globe2, Heart, Home, Image as ImageIcon, Languages, Link2,
@@ -102,9 +74,18 @@ function App() {
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot' | 'verify' | 'reset' | 'success'>(() => {
     try { return localStorage.getItem('pardaisLiteAuth') === '1' ? 'login' : 'login'; } catch { return 'login'; }
   });
-  const [authenticated, setAuthenticated] = useState(() => {
-    try { return localStorage.getItem('pardaisLiteAuth') === '1'; } catch { return false; }
-  });
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [activeLiveRoom, setActiveLiveRoom] = useState<any | null>(null);
+
+  useEffect(() => onAuthStateChanged(auth, user => {
+    setAuthenticated(Boolean(user));
+    setAuthReady(true);
+    if (user) {
+      try { localStorage.setItem('pardaisLiteUserId', user.uid); localStorage.setItem('pardaisLiteEmail', user.email || ''); localStorage.setItem('pardaisLiteAuth', '1'); } catch {}
+      void api.post('/api/auth/register', { name: user.displayName || 'Pardais User', avatar: user.photoURL || null }).catch(() => {});
+    } else { try { localStorage.removeItem('pardaisLiteAuth'); localStorage.removeItem('pardaisLiteUserId'); } catch {} }
+  }), []);
 
   useEffect(() => {
     if (!splash) return;
@@ -145,8 +126,8 @@ function App() {
     else nav('profile');
   };
 
-  if (splash) return <PardaisSplash />;
-  if (!authenticated) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthenticated={() => { setAuthenticated(true); try { const email = localStorage.getItem('pardaisLiteEmail') || 'demo'; const userId = localStorage.getItem('pardaisLiteUserId') || `demo-${btoa(email).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`; localStorage.setItem('pardaisLiteUserId', userId); localStorage.setItem('pardaisLiteAuth', '1'); } catch {} }} />;
+  if (splash || !authReady) return <PardaisSplash />;
+  if (!authenticated) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthenticated={() => setAuthenticated(true)} />;
   if (fullPage === 'findFriends') return <FindFriendsPage onClose={() => setFullPage(null)} />;
   if (fullPage === 'level') return <LevelSystemPage onBack={() => setFullPage(null)} />;
   if (subPage === 'settings') return <SettingsPage onBack={back} onNotifications={() => setSubPage('notifications')} onEditProfile={() => setSubPage('editProfile')} onLevel={() => setFullPage('level')} onWallet={() => setSubPage('wallet')} onBlocked={() => setSubPage('blockedViewers')} />;
@@ -162,8 +143,8 @@ function App() {
 
   return <div className="app-shell"><div className="phone">
     {tab === 'home' && <HomeScreen homeMode={homeMode} setHomeMode={setHomeMode} liked={liked} setLiked={setLiked} saved={saved} setSaved={setSaved} followed={followed} setFollowed={setFollowed} onSearch={() => setFullPage('findFriends')} />}
-    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} liveView={liveView} setLiveView={setLiveView} />}
-    {tab === 'create' && <CreateScreen camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async () => { let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} await api.post('/api/live/create', { hostId: userId, title: 'Pardais Live', mode: 'audio' }); setLiveView('solo'); setTab('live'); }} />}
+    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} />}
+    {tab === 'create' && <CreateScreen camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); }} />}
     {tab === 'inbox' && <InboxScreen />}
     {tab === 'profile' && <ProfileScreen onSettings={() => setSubPage('settings')} onEdit={() => setSubPage('editProfile')} onFollowers={() => setSubPage('followers')} onShare={() => setProfileOverlay('share')} onLevel={() => setFullPage('level')} profileTab={profileTab} setProfileTab={setProfileTab} onCreator={() => setSubPage('creator')} onAgency={() => setSubPage('agency')} onWallet={() => setSubPage('wallet')} />}
     {tab !== 'create' && <BottomNav tab={tab} nav={nav} />}
@@ -176,34 +157,25 @@ function AuthScreen({ mode, setMode, onAuthenticated }: { mode: 'login' | 'signu
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const resetState = () => { setError(''); setCode(''); setPassword(''); setConfirmPassword(''); };
-  const createAccount = () => {
+  const resetState = () => { setError(''); setPassword(''); setConfirmPassword(''); };
+  const createAccount = async () => {
     setError('');
-    if (!name.trim() || !email.trim() || !password.trim()) { setError('Please enter the required details.'); return; }
-    localStorage.setItem('pardaisLiteName', name.trim()); localStorage.setItem('pardaisLiteEmail', email.trim()); localStorage.setItem('pardaisLitePassword', password); onAuthenticated();
+    if (!name.trim() || !email.trim() || !password) return setError('Please enter your name, email and password.');
+    if (password.length < 8) return setError('Password must be at least 8 characters.');
+    try { const cred = await createUserWithEmailAndPassword(auth, email.trim(), password); await cred.user.updateProfile({ displayName: name.trim() }); await api.post('/api/auth/register', { name: name.trim() }); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not create account.'); }
   };
-  const login = () => {
-    setError('');
-    if (!email.trim() || !password.trim()) { setError('Please enter email and password.'); return; }
-    localStorage.setItem('pardaisLiteEmail', email.trim());
-    localStorage.setItem('pardaisLitePassword', password);
-    onAuthenticated();
+  const login = async () => {
+    setError(''); if (!email.trim() || !password) return setError('Please enter email and password.');
+    try { await signInWithEmailAndPassword(auth, email.trim(), password); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Login failed.'); }
   };
-  const requestReset = () => { setError(''); if (!email.trim()) { setError('Please enter an email.'); return; } setMode('verify'); };
-  const recoverDeletedAccount = async () => { const value = window.prompt('Enter the email used for your Pardais account'); if (!value?.trim()) return; try { const r = await api.post('/api/account/recover', { email: value.trim() }); try { localStorage.setItem('pardaisLiteEmail', value.trim()); if (r.data?.userId) localStorage.setItem('pardaisLiteUserId', String(r.data.userId)); } catch {} setError('Account recovered successfully. You can log in again.'); } catch { setError('No recoverable account was found for this email, or the 30-day recovery period has expired.'); } };
-  const verifyCode = () => { setError(''); if (code.trim().length !== 6) { setError('Enter any 6-digit code.'); return; } setMode('reset'); };
-  const resetPassword = () => { setError(''); if (!password.trim() || password !== confirmPassword) { setError('Enter and confirm your new password.'); return; } localStorage.setItem('pardaisLitePassword', password); setMode('success'); };
-  const title = mode === 'login' || mode === 'reset' || mode === 'success' ? 'PARDAIS' : 'PARDAIS';
-  if (mode === 'success') return <main className='auth-screen'><div className='auth-success'><div className='auth-success-icon'>✓</div><h1>Password Reset!</h1><p>Your password has been changed successfully.</p><button onClick={() => { resetState(); setMode('login'); }}>Go to Login</button></div></main>;
-  if (mode === 'verify') return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='VERIFY CODE' onBack={() => { resetState(); setMode('forgot'); }} /><div className='auth-card auth-card-compact'><p>We have sent a 6-digit code to <b>{email || 'your email'}</b></p><div className='otp-row'>{[0,1,2,3,4,5].map(i => <input key={i} maxLength={1} inputMode='numeric' value={code[i] || ''} onChange={e => { const value = e.target.value.replace(/\\D/g,''); const next = code.split(''); next[i] = value; setCode(next.join('').slice(0,6)); }} />)}</div><div className='auth-helper'>Didn't receive the code? <button onClick={() => setError('A new demo code is 123456.')}>Resend Code</button></div><AuthError message={error}/><button className='auth-primary' onClick={verifyCode}>Verify</button></div></main>;
-  if (mode === 'reset') return <main className='auth-screen'><AuthHeader title={title} subtitle='NEW PASSWORD' onBack={() => setMode('verify')} /><div className='auth-card'><p>Set a new password for your account.</p><AuthField label='NEW PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='Enter new password' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm new password' icon={<LockKeyhole />} onChange={setConfirmPassword} /><div className='auth-rules'><span>✓ At least 8 characters</span><span>✓ Include a number</span><span>✓ Include a letter</span><span>✓ Include a special character</span></div><AuthError message={error}/><button className='auth-primary' onClick={resetPassword}>Reset Password</button></div></main>;
-  if (mode === 'forgot') return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='RESET PASSWORD' onBack={() => { resetState(); setMode('login'); }} /><div className='auth-card auth-card-compact'><p>Enter your email to receive a password reset code.</p><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthError message={error}/><button className='auth-primary' onClick={requestReset}>Send Reset Code</button><div className='auth-footer'>Remember your password? <button onClick={() => { resetState(); setMode('login'); }}>Login</button></div></div></main>;
-  if (mode === 'signup') return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='SIGN UP' onBack={() => { resetState(); setMode('login'); }} /><div className='auth-card'><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound />} onChange={setName} /><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='Create a password' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole />} onChange={setConfirmPassword} /><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={createAccount}>Create Account</button><div className='auth-footer'>Already have an account? <button onClick={() => { resetState(); setMode('login'); }}>Login</button></div></div></main>;
-  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>WELCOME BACK</span></div><div className='auth-card'><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='********' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>Remember Me</span></label><button className='auth-link' onClick={() => { resetState(); setMode('forgot'); }}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={login}>Login</button><button className='auth-link' style={{ width: '100%', marginTop: 10 }} onClick={() => void recoverDeletedAccount()}>Recover Deleted Account (30 days)</button><div className='auth-footer'>Don't have an account? <button onClick={() => { resetState(); setMode('signup'); }}>Sign Up</button></div></div></main>;
+  const googleLogin = async () => { try { await signInWithPopup(auth, new GoogleAuthProvider()); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Google sign-in failed.'); } };
+  const requestReset = async () => { setError(''); if (!email.trim()) return setError('Please enter an email.'); try { await sendPasswordResetEmail(auth, email.trim()); setError('Password reset email sent. Check your inbox.'); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not send reset email.'); } };
+  if (mode === 'success') return <main className='auth-screen'><div className='auth-success'><div className='auth-success-icon'>✓</div><h1>Password Reset!</h1><p>Your password reset link has been sent.</p><button onClick={() => { resetState(); setMode('login'); }}>Go to Login</button></div></main>;
+  if (mode === 'forgot' || mode === 'verify' || mode === 'reset') return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='RESET PASSWORD' onBack={() => { resetState(); setMode('login'); }} /><div className='auth-card auth-card-compact'><p>Enter your email to receive a secure Firebase password reset link.</p><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthError message={error}/><button className='auth-primary' onClick={() => void requestReset()}>Send Reset Email</button></div></main>;
+  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>WELCOME BACK</span></div><div className='auth-card'>{mode === 'signup' ? <><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound />} onChange={setName} /><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='Create a password' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole />} onChange={setConfirmPassword} /><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={() => void createAccount()}>Create Account</button><div className='auth-footer'>Already have an account? <button onClick={() => { resetState(); setMode('login'); }}>Login</button></div></> : <><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='********' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>Remember Me</span></label><button className='auth-link' onClick={() => { resetState(); setMode('forgot'); }}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={() => void login()}>Login</button><button className='auth-link' style={{ width: '100%', marginTop: 10 }} onClick={() => void googleLogin()}>Continue with Google</button><div className='auth-footer'>Don't have an account? <button onClick={() => { resetState(); setMode('signup'); }}>Sign Up</button></div></>}</div></main>;
 }
 
 function AuthHeader({ title, subtitle, onBack }: { title: string; subtitle: string; onBack: () => void }) { return <div className='auth-header'><button onClick={onBack}><ChevronLeft /></button><div><h1>{title}</h1><span>{subtitle}</span></div></div>; }
@@ -225,13 +197,13 @@ function HomeScreen({ homeMode, setHomeMode, liked, setLiked, saved, setSaved, f
   const visibleReels = homeMode === 'Following' ? reels.filter(item => followingUsers.includes(item.name)) : reels;
   const reel = visibleReels.length ? visibleReels[reelIndex % visibleReels.length] : null;
   const loadComments = async () => { if (!reel) return; try { const r = await api.get(`/api/comments/${encodeURIComponent(reel.handle)}`); setComments((r.data?.items ?? []).map((x: any) => ({ userId: String(x.userId ?? 'User'), text: String(x.text ?? '') }))); } catch {} };
-  const sendComment = async () => { if (!reel) return; const text = commentText.trim(); if (!text) return; let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} try { await api.post('/api/comments', { userId, targetId: reel.handle, text }); setComments(v => [...v, { userId: 'You', text }]); setCommentText(''); } catch {} };
+  const sendComment = async () => { if (!reel) return; const text = commentText.trim(); if (!text) return; const userId = auth.currentUser?.uid || ''; try { await api.post('/api/comments', { userId, targetId: reel.handle, text }); setComments(v => [...v, { userId: 'You', text }]); setCommentText(''); } catch {} };
   const toggleFollow = (name: string) => {
     const nextFollowing = !followingUsers.includes(name);
     setFollowingUsers(current => nextFollowing ? [...current, name] : current.filter(item => item !== name));
     setFollowed(nextFollowing);    let userId = '';
     try { userId = localStorage.getItem('pardaisLiteUserId') || ''; } catch {}
-    void api.post('/api/follow', { followerId: userId || 'demo-user', followingId: reel?.handle || name, action: nextFollowing ? 'follow' : 'unfollow' }).catch(() => {});
+    void api.post('/api/follow', { followerId: userId, followingId: reel?.handle || name, action: nextFollowing ? 'follow' : 'unfollow' }).catch(() => {});
   };
   return <main className="reel-screen home-feed-screen">
     <div className="reel-top home-feed-top">
@@ -265,39 +237,26 @@ function HomeScreen({ homeMode, setHomeMode, liked, setLiked, saved, setSaved, f
     {shareOpen && <ShareSheet onClose={() => setShareOpen(false)} />}
   </main>;
 }
-function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, liveView, setLiveView }: any) {
+function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom }: any) {
+  const [rooms, setRooms] = useState<any[]>([]);
+  useEffect(() => { void api.get('/api/live/rooms').then(r => setRooms(r.data?.rooms ?? [])).catch(() => setRooms([])); }, [activeLiveRoom]);
+  if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} />;
   const hosts = [['THE THUNDER','@thethunder','⚡','SOLO','38','3m'],['Ai Mout','@mrunknown','🧔','PK','10','4m'],['Malang Sb','@shahshab','😎','SOLO','16','22m'],['Zara Zara','@Zarasikan','👩','PK','16','56m'],['Jannat 40','@Jannat40','🦋','GUEST','40','1m'],['RANA Rehanali','@RanaRehanali','🧑','SOLO','29','6m']];
-  if (room) return <ViewerSoloLive onClose={() => setRoom(false)} />;
-  if (liveView === 'solo') return <SoloHostLive onClose={() => setLiveView('discover')} onGuestInvite={() => setLiveView('guestRoom')} onPk={() => setLiveView('pkInvite')} />;
-  if (liveView === 'inviteGuest') return <InviteGuestPage onBack={() => setLiveView('solo')} onInvited={() => setLiveView('guestRoom')} />;
-  if (liveView === 'guestRoom') return <GuestSeatRoom onClose={() => setLiveView('solo')} />;
-  if (liveView === 'pkInvite') return <PkInvitePage onBack={() => setLiveView('solo')} onSent={() => setLiveView('pkWaiting')} />;
-  if (liveView === 'pkWaiting') return <PkWaitingPage onCancel={() => setLiveView('solo')} onAccept={() => setLiveView('pkPreMatch')} onIncoming={() => setLiveView('pkIncoming')} />;
-  if (liveView === 'pkIncoming') return <PkIncomingPage onReject={() => setLiveView('solo')} onAccept={() => setLiveView('pkPreMatch')} />;
-  if (liveView === 'pkPreMatch') return <PkPreMatchPage onCancel={() => setLiveView('solo')} onStart={() => setLiveView('pkRoom')} />;
-  if (liveView === 'pkRoom') return <PkRoomPage onClose={() => setLiveView('discover')} />;
-  return <main className="live-page">
-    <div className="live-header"><h1>Discover</h1><div className="header-actions"><button className="go-live" onClick={() => nav('create')}><Zap /> Go Live</button><button className="round-search"><Search /></button></div></div>
-    <div className="live-tabs">{(['For You','PK','Following'] as const).map(x => <button key={x} className={liveMode === x ? 'live-tab selected' : 'live-tab'} onClick={() => setLiveMode(x)}>{x === 'PK' ? '⚔ PK' : x}</button>)}</div>
-    {liveMode === 'PK' ? <div className="pk-discover-card" onClick={() => setRoom(true)}><div className="pk-live-pill">● LIVE</div><div className="pk-timer">PK 01:04</div><div className="pk-discover-side left"><div className="pk-discover-avatar">🧔</div><b>Ai Mout</b><span>🪙 10</span></div><div className="pk-discover-mark">PK</div><div className="pk-discover-side right"><div className="pk-discover-avatar">👩</div><b>Zara Zara</b><span>🪙 16</span></div><div className="pk-discover-foot">🔥 Battle in progress — tap to watch</div></div> :
-      <div className="live-grid">{hosts.filter(h => liveMode === 'Following' ? ['Jannat 40','Malang Sb'].includes(h[0]) : true).map(h => <button className="live-card" key={h[0]} onClick={() => setRoom(true)}><div className="card-top"><span className="mode-logo">{h[3]}</span><small>{h[5]}</small></div><div className="host-ring"><span>{h[2]}</span></div><div className="card-name">{h[0]}</div><div className="card-bottom"><span>{h[1]}</span><b>{h[4]}</b></div></button>)}</div>}
+  return <main className='live-page'>
+    <div className='live-header'><h1>Discover</h1><div className='header-actions'><button className='go-live' onClick={() => nav('create')}><Zap /> Go Live</button><button className='round-search'><Search /></button></div></div>
+    <div className='live-tabs'>{(['For You','PK','Following'] as const).map(x => <button key={x} className={liveMode === x ? 'live-tab selected' : 'live-tab'} onClick={() => setLiveMode(x)}>{x === 'PK' ? '⚔ PK' : x}</button>)}</div>
+    {liveMode === 'PK' ? <div className='pk-discover-card'><div className='pk-live-pill'>● LIVE</div><div className='pk-timer'>PK</div><div className='pk-discover-side left'><div className='pk-discover-avatar'>⚔</div><b>PK Battles</b><span>Live</span></div><div className='pk-discover-mark'>PK</div><div className='pk-discover-side right'><div className='pk-discover-avatar'>⚡</div><b>Join a battle</b><span>Now</span></div></div> : rooms.length ? <div className='live-grid'>{rooms.map((r:any) => <button className='live-card' key={r.id} onClick={async () => { try { const join = await api.post('/api/live/join', { roomId: r.id }); onOpenRoom({ ...r, agora: join.data.agora, isHost: false }); } catch {} }}><div className='card-top'><span className='mode-logo'>{String(r.mode || 'LIVE').toUpperCase()}</span><small>LIVE</small></div><div className='host-ring'><span>{String(r.host?.name || 'P').slice(0,1)}</span></div><div className='card-name'>{r.host?.name || 'Pardais Host'}</div><div className='card-bottom'><span>{r.title || 'Pardais Live'}</span><b>🟢</b></div></button>)}</div> : <div className='live-grid'>{hosts.map(h => <button className='live-card' key={h[0]}><div className='card-top'><span className='mode-logo'>{h[3]}</span><small>{h[5]}</small></div><div className='host-ring'><span>{h[2]}</span></div><div className='card-name'>{h[0]}</div><div className='card-bottom'><span>{h[1]}</span><b>{h[4]}</b></div></button>)}</div>}
   </main>;
 }
 
 function CreateScreen({ camera, setCamera, onClose, onGoLive }: any) {
   const [muted, setMuted] = useState(false);
   const [camOff, setCamOff] = useState(true);
-  return <main className="go-live-screen"><div className="go-live-preview">
-    <button className="camera-close go-live-close" onClick={onClose}><X /></button>
-    <div className="ready-pill"><i /> Ready</div>
-    <div className="camera-off-preview"><Video /><span>Camera is off</span></div>
-    <div className="go-live-controls">
-      <button><Camera /><span>Flip</span></button>
-      <button onClick={() => setCamera(camera === 'normal' ? 'effects' : 'normal')}><Sparkles /><span>Beauty</span></button>
-      <button className={muted ? 'control-active' : ''} onClick={() => setMuted(!muted)}><Phone /><span>{muted ? 'Unmute' : 'Mute'}</span></button>
-      <button className={camOff ? 'cam-off-active' : ''} onClick={() => setCamOff(!camOff)}><Video /><span>{camOff ? 'Cam Off' : 'Cam On'}</span></button>
-    </div>
-    <button className="go-live-main" onClick={onGoLive}>• Go Live</button>
+  return <main className='go-live-screen'><div className='go-live-preview'>
+    <button className='camera-close go-live-close' onClick={onClose}><X /></button><div className='ready-pill'><i /> Ready</div>
+    <div className='camera-off-preview'><Video /><span>{camOff ? 'Camera is off' : 'Camera preview ready'}</span></div>
+    <div className='go-live-controls'><button><Camera /><span>Flip</span></button><button onClick={() => setCamera(camera === 'normal' ? 'effects' : 'normal')}><Sparkles /><span>Beauty</span></button><button className={muted ? 'control-active' : ''} onClick={() => setMuted(!muted)}><Phone /><span>{muted ? 'Unmute' : 'Mute'}</span></button><button className={camOff ? 'cam-off-active' : ''} onClick={() => setCamOff(!camOff)}>{camOff ? <Video /> : <VideoOff />}<span>{camOff ? 'Cam Off' : 'Cam On'}</span></button></div>
+    <button className='go-live-main' onClick={() => void onGoLive({ camOff, muted })}>• Go Live</button>
   </div></main>;
 }
 
@@ -315,9 +274,13 @@ function InboxScreen() {
 }
 
 function ProfileScreen({ onSettings, onEdit, onFollowers, onShare, onLevel, profileTab, setProfileTab, onCreator, onAgency, onWallet }: any) {
+  const [user, setUser] = useState<any>(null);
+  const userId = auth.currentUser?.uid || '';
+  useEffect(() => { if (userId) void api.get(`/api/users/${encodeURIComponent(userId)}`).then(r => setUser(r.data?.user)).catch(() => {}); }, [userId]);
+  const displayName = user?.name || auth.currentUser?.displayName || 'Pardais User';
   return <main className="page profile-page"><div className="profile-header"><h1>Profile</h1><div><button onClick={onEdit}><Edit3 /></button><button onClick={onShare}><Share2 /></button><button><Bell /></button><button onClick={onSettings}><Settings /></button></div></div>
-    <div className="profile-identity"><div className="profile-avatar">🪽</div><div className="verified">✓</div><h2>☠ Saif Khokhar ☠</h2><div className="handle">@khokhar_1 <Copy size={15} /></div><p>No bio yet</p><button className="profile-level-chip" onClick={onLevel}><span>Lv</span><b>29</b><small>Golden Cobra</small><ChevronRight /></button></div>
-    <div className="stats"><button onClick={onFollowers}><b>1</b><span>FOLLOWING</span></button><button onClick={onFollowers}><b>69</b><span>FOLLOWERS</span></button><div><b>12</b><span>LIKES</span></div></div>
+    <div className="profile-identity"><div className="profile-avatar">{user?.avatar ? <img src={user.avatar} alt="" /> : 'P'}</div><div className="verified">✓</div><h2>{displayName}</h2><div className="handle">@{user?.username || userId.slice(0, 10)} <Copy size={15} /></div><p>{user?.bio || 'No bio yet'}</p><button className="profile-level-chip" onClick={onLevel}><span>Lv</span><b>{user?.level || 1}</b><small>Pardais Member</small><ChevronRight /></button></div>
+    <div className="stats"><button onClick={onFollowers}><b>0</b><span>FOLLOWING</span></button><button onClick={onFollowers}><b>0</b><span>FOLLOWERS</span></button><div><b>0</b><span>LIKES</span></div></div>
     <div className="profile-cards"><button onClick={onCreator}><span className="card-icon"><Zap /></span><div><b>Creator Center</b><small>Withdraw · Earnings · Analytics</small></div><ChevronRight /></button><button onClick={onAgency}><span className="card-icon"><Users /></span><div><b>Agency Center</b><small>Join Agency & Grow Faster</small></div><ChevronRight /></button><button onClick={onWallet}><span className="card-icon"><WalletCards /></span><div><b>My Wallet</b><small>Top up coins & manage earnings</small></div><ChevronRight /></button></div>
     <div className="profile-tabs"><button className={profileTab === 'Public' ? 'selected' : ''} onClick={() => setProfileTab('Public')}><Globe2 /> Public</button><button className={profileTab === 'Private' ? 'selected' : ''} onClick={() => setProfileTab('Private')}>♧ Private</button><button className={profileTab === 'Saved' ? 'selected' : ''} onClick={() => setProfileTab('Saved')}><Bookmark /> Saved</button></div><ProfileVideoArea mode={profileTab} /></main>;
 }
@@ -349,7 +312,7 @@ function FindFriendsPage({ onClose }: { onClose: () => void }) {
   const [loadingFollow, setLoadingFollow] = useState<string | null>(null);
   const results = friendDirectory.filter(([name, user]) => !query.trim() || `${name} ${user}`.toLowerCase().includes(query.toLowerCase()));
   const toggleDirectoryFollow = async (targetUsername: string) => {
-    let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {}
+    const userId = auth.currentUser?.uid || ''
     const targetId = `user-${targetUsername.replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`;
     const next = !following[targetUsername];
     setLoadingFollow(targetUsername);
@@ -397,10 +360,10 @@ function ChatDetailPage({ name, onBack }: { name: string; onBack: () => void }) 
   const [menu, setMenu] = useState(false);
   const [recording, setRecording] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const send = () => { if (!text.trim()) return; const messageText = text.trim(); let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'text', text: messageText }); setMessages(v => [...v, {text:messageText, time:'Now', mine:true}]); setText(''); };
-  const sendPhoto = () => { let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'photo', text: 'Photo attachment' }); setMessages(v => [...v, {text:'📷 Photo attachment sent', time:'Now', mine:true}]); };
-  const toggleVoice = () => { if (recording) { let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'voice', text: 'Voice message · 0:08' }); setMessages(v => [...v, {text:'🎙 Voice message · 0:08', time:'Now', mine:true}]); setRecording(false); } else setRecording(true); };
-  const clearChat = () => { if (confirm('Delete this complete chat?')) { let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {} void api.delete(`/api/messages/${userId}/${encodeURIComponent(name)}`).catch(() => {}); setMessages([]); } };
+  const send = () => { if (!text.trim()) return; const messageText = text.trim(); const userId = auth.currentUser?.uid || ''; void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'text', text: messageText }); setMessages(v => [...v, {text:messageText, time:'Now', mine:true}]); setText(''); };
+  const sendPhoto = () => { const userId = auth.currentUser?.uid || ''; void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'photo', text: 'Photo attachment' }); setMessages(v => [...v, {text:'📷 Photo attachment sent', time:'Now', mine:true}]); };
+  const toggleVoice = () => { if (recording) { const userId = auth.currentUser?.uid || ''; void api.post('/api/messages', { senderId: userId, receiverId: name, type: 'voice', text: 'Voice message · 0:08' }); setMessages(v => [...v, {text:'🎙 Voice message · 0:08', time:'Now', mine:true}]); setRecording(false); } else setRecording(true); };
+  const clearChat = () => { if (confirm('Delete this complete chat?')) { const userId = auth.currentUser?.uid || ''; void api.delete(`/api/messages/${userId}/${encodeURIComponent(name)}`).catch(() => {}); setMessages([]); } };
   return <main className="chat-detail-page">
     <header className="chat-detail-head"><button onClick={onBack}><ChevronLeft /></button><span className="chat-avatar">🦋</span><div><b>{name}</b><small>May 15</small></div><button onClick={clearChat}><Trash2 /></button></header>
     <div className="chat-message-area">{messages.length === 0 ? <div className="empty-chat">Chat deleted</div> : <>{messages.map((m,i) => <div key={i} className={m.mine ? 'message-bubble mine' : 'message-bubble'}><span>{m.text}</span><small>{m.time}</small></div>)}</>}</div>
@@ -418,7 +381,7 @@ function CreatorCenterPage({ onBack }: any) {
   const [message, setMessage] = useState('');
   const [historyTab, setHistoryTab] = useState<'All' | 'Received' | 'Exchange'>('All');
   const [transactions, setTransactions] = useState<any[]>([]);
-  const userId = (() => { try { return localStorage.getItem('pardaisLiteUserId') || 'demo-user'; } catch { return 'demo-user'; } })();
+  const userId = auth.currentUser?.uid || '';
   const refresh = async () => { const r = await api.get(`/api/creator/${userId}`); setEarnings(Number(r.data?.earnings ?? 0)); setTransactions(r.data?.transactions ?? []); };
   useEffect(() => { void refresh().catch(() => setMessage('Unable to load creator earnings.')); }, []);
   const exchange = async () => { const raw = window.prompt('Enter coins to exchange into your wallet'); const coins = Number(raw); if (!Number.isInteger(coins) || coins <= 0) return setMessage('Enter a valid whole coin amount.'); try { const r = await api.post('/api/creator/exchange', { userId, coins }); setMessage(`${r.data.coins} coins exchanged to Wallet.`); await refresh(); } catch { setMessage('Exchange failed. Check your available creator earnings.'); } };
@@ -550,7 +513,7 @@ function WalletPage({ onBack }: any) {
   const [amount, setAmount] = useState('');
   const [pin, setPin] = useState('');
   const [transferError, setTransferError] = useState('');
-  const userId = (() => { try { return localStorage.getItem('pardaisLiteUserId') || 'demo-user'; } catch { return 'demo-user'; } })();
+  const userId = auth.currentUser?.uid || '';
   const loadWallet = async () => { const r = await api.get(`/api/wallet/${userId}`); setCoins(Number(r.data?.wallet?.coins ?? 0)); const h = await api.get(`/api/wallet/${userId}/transactions`); setHistory(h.data?.items ?? []); };
   useEffect(() => { void loadWallet().catch(() => setMessage('Unable to load wallet.')); }, []);
   const choosePack = async (packCoins: string, price: string) => { try { await api.post('/api/wallet/recharge-intent', { userId, coins: packCoins, amount: price }); setMessage(`${packCoins} coins recharge intent created. Payment can be completed when the payment gateway is connected.`); } catch { setMessage('Recharge request failed.'); } };
@@ -580,10 +543,10 @@ function SettingsPage({ onBack, onNotifications, onLevel, onWallet, onBlocked }:
   const [privateAccount, setPrivateAccount] = useState(false);
   const [language, setLanguage] = useState('English');
   const [message, setMessage] = useState('');
-  const userId = (() => { try { return localStorage.getItem('pardaisLiteUserId') || 'demo-user'; } catch { return 'demo-user'; } })();
+  const userId = auth.currentUser?.uid || '';
   useEffect(() => { void api.get(`/api/settings/${userId}`).then(r => { setPrivateAccount(Boolean(r.data?.settings?.privateAccount)); setLanguage(String(r.data?.settings?.language ?? 'English')); }).catch(() => {}); }, []);
   const save = async (patch: Record<string, unknown>) => { try { await api.put(`/api/settings/${userId}`, patch); setMessage('Settings saved.'); } catch { setMessage('Could not save setting.'); } };
-  const logout = () => { try { localStorage.removeItem('pardaisLiteAuth'); } catch {} window.location.reload(); };
+  const logout = () => { void signOut(auth); };
   const deleteAccount = async () => { if (!window.confirm('Delete your account? Your account will be scheduled for permanent deletion after 30 days. You can recover it yourself during this 30-day period using your account email.')) return; let email = ''; try { email = localStorage.getItem('pardaisLiteEmail') || ''; } catch {} try { const r = await api.post('/api/account/delete-request', { userId, email }); const until = r.data?.recoveryUntil ? new Date(r.data.recoveryUntil).toLocaleDateString() : '30 days'; setMessage(`Account deletion scheduled. You can recover your account by email within 30 days (until ${until}).`); } catch { setMessage('Could not submit deletion request.'); } };
   return <SubLayout title="Settings" onBack={onBack}>
     <section><h3>ACCOUNT</h3><div className="settings-card">
@@ -621,8 +584,8 @@ function NotificationsPage({ onBack }: any) {
 }
 
 function EditProfilePage({ onBack }: any) {
-  const userId = (() => { try { return localStorage.getItem('pardaisLiteUserId') || 'demo-user'; } catch { return 'demo-user'; } })();
-  const [form, setForm] = useState({ firstName: 'Saif', lastName: 'Khokhar', gender: 'Male', dateOfBirth: 'February 23, 1998', bio: '', whatsapp: '+92 300 1234567', facebook: 'https://facebook.com/usern', instagram: 'https://instagram.com/usern', youtube: 'https://youtube.com/@usern' });
+  const userId = auth.currentUser?.uid || '';
+  const [form, setForm] = useState({ firstName: '', lastName: '', gender: '', dateOfBirth: '', bio: '', whatsapp: '', facebook: '', instagram: '', youtube: '' });
   const [message, setMessage] = useState('');
   useEffect(() => { void api.get(`/api/profile/${userId}`).then(r => setForm(v => ({ ...v, ...r.data?.profile }))).catch(() => {}); }, []);
   const set = (key: string, value: string) => setForm(v => ({ ...v, [key]: value }));
@@ -651,7 +614,7 @@ function FollowersPage({ active, setActive, onBack }: any) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const userId = (() => { try { return localStorage.getItem('pardaisLiteUserId') || 'demo-user'; } catch { return 'demo-user'; } })();
+  const userId = auth.currentUser?.uid || '';
   const load = async () => {
     setLoading(true);
     try {
@@ -731,7 +694,7 @@ function SoloHostLive({ onClose, onGuestInvite, onPk }: any) {
 function ViewerActionSheet({ viewer = 'Mr Adeeb', onClose, onInvite }: any) {
   const [message, setMessage] = useState('');
   const level = viewer === 'Mano Rani' ? 14 : viewer === 'Shanzey Khokhar' ? 28 : 25;
-  const act = async (action: 'moderator' | 'warn' | 'report' | 'kick' | 'block') => { let actorId = 'demo-user'; try { actorId = localStorage.getItem('pardaisLiteUserId') || actorId; } catch {} const targetUserId = `user-${viewer.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`; const reason = action === 'report' || action === 'warn' ? (window.prompt('Reason') || 'Community guideline review') : undefined; try { await api.post('/api/moderation', { actorId, targetUserId, targetUsername: viewer, action, reason }); setMessage(action === 'report' ? 'Report submitted to admins.' : `${viewer} action completed: ${action}.`); } catch { setMessage('Action could not be completed.'); } };
+  const act = async (action: 'moderator' | 'warn' | 'report' | 'kick' | 'block') => { const actorId = auth.currentUser?.uid || ''; const targetUserId = `user-${viewer.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`; const reason = action === 'report' || action === 'warn' ? (window.prompt('Reason') || 'Community guideline review') : undefined; try { await api.post('/api/moderation', { actorId, targetUserId, targetUsername: viewer, action, reason }); setMessage(action === 'report' ? 'Report submitted to admins.' : `${viewer} action completed: ${action}.`); } catch { setMessage('Action could not be completed.'); } };
   return <div className="viewer-sheet-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="viewer-sheet"><div className="sheet-handle" /><div className="viewer-head"><div className="viewer-avatar">{viewer === 'Mano Rani' ? '🌹' : viewer === 'Shanzey Khokhar' ? '🧑' : '😎'}</div><div><b>{viewer}</b><small>🦁 Lv {level}</small></div><button><UserPlus /></button><button><MessageCircle /></button></div>
     <button><UserRound /><div><b>Visit Profile</b><small>View full profile</small></div><ChevronRight /></button>
     <button className="green-option" onClick={onInvite}><Video /><div><b>Invite as Guest</b><small>Bring them on as a live guest</small></div><ChevronRight /></button>
@@ -797,12 +760,12 @@ function ViewerUserActionSheet({ onClose }: any) {
 function GiftDrawer({ onClose, onSent }: any) {
   const gifts = [['King Ring','1,800','👑'],['fight up','1,500','⚔️'],['Crown','1,200','👑'],['Train','1,000','🚆'],['kitty bike','750','🏍️'],['Rose','100','🌹'],['Butterfly','150','🦋'],['Fireworks','270','🎆']];
   const [selected, setSelected] = useState(5);
-  return <div className="gift-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="gift-drawer"><div className="sheet-handle" /><div className="gift-head"><button onClick={onClose}><X /></button><h2>Send Gift</h2><b>🪙 6,690 <span>＋</span></b></div><div className="gift-tabs"><button className="active">New</button><button>PREMIUM</button><button>special</button></div><div className="gift-grid">{gifts.map(([name,cost,icon],i)=><button className={selected===i ? 'gift-item selected' : 'gift-item'} key={name} onClick={()=>setSelected(i)}><div className="gift-icon">{icon}</div><b>{name}</b><span>🪙 {cost}</span></button>)}</div><div className="gift-sendbar"><span>Select a gift</span><button>−</button><b>1</b><button>＋</button><strong>1x⌃</strong><button onClick={() => { let userId = ''; try { userId = localStorage.getItem('pardaisLiteUserId') || ''; } catch {} void api.post('/api/gifts/send', { senderId: userId || 'demo-user', receiverId: 'demo-host', giftId: gifts[selected][0], quantity: 1 }).catch(() => {}); onSent(); }}>Send</button></div></div></div>;
+  return <div className="gift-backdrop" onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="gift-drawer"><div className="sheet-handle" /><div className="gift-head"><button onClick={onClose}><X /></button><h2>Send Gift</h2><b>🪙 6,690 <span>＋</span></b></div><div className="gift-tabs"><button className="active">New</button><button>PREMIUM</button><button>special</button></div><div className="gift-grid">{gifts.map(([name,cost,icon],i)=><button className={selected===i ? 'gift-item selected' : 'gift-item'} key={name} onClick={()=>setSelected(i)}><div className="gift-icon">{icon}</div><b>{name}</b><span>🪙 {cost}</span></button>)}</div><div className="gift-sendbar"><span>Select a gift</span><button>−</button><b>1</b><button>＋</button><strong>1x⌃</strong><button onClick={() => { let userId = ''; try { userId = localStorage.getItem('pardaisLiteUserId') || ''; } catch {} void api.post('/api/gifts/send', { senderId: userId, receiverId: 'demo-host', giftId: gifts[selected][0], quantity: 1 }).catch(() => {}); onSent(); }}>Send</button></div></div></div>;
 }
 
 function GiftAnimation({ onDone }: any) {
   const [privateAccount, setPrivateAccount] = useState(false);
-  let userId = 'demo-user'; try { userId = localStorage.getItem('pardaisLiteUserId') || userId; } catch {}
+  const userId = auth.currentUser?.uid || ''
   useEffect(() => { void api.get(`/api/settings/${encodeURIComponent(userId)}`).then(r => setPrivateAccount(Boolean(r.data?.settings?.privateAccount))).catch(() => {}); const t=setTimeout(onDone, 2600); return () => clearTimeout(t); }, [onDone, userId]);
   return <div className="gift-animation"><div className="gift-toast">🌟 {privateAccount ? 'Private User' : 'Saif Khokhar'} <span>sent 🌹 Rose</span><b>x 1</b></div><div className="gift-rose">🌹</div></div>;
 }
@@ -813,9 +776,9 @@ function InviteGuestPage({ onBack, onInvited }: any) {
   return <div className="full-dark-page"><header className="flow-header"><button onClick={onBack}><ChevronLeft /></button><div><h1>Invite to Live</h1><small>Invite a live user as your guest</small></div><b>Guest</b></header><div className="flow-search"><Search /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or handle..." /></div><p className="available-count">{results.length} live users available</p><div className="live-user-list">{results.map(u => <div className="live-user-row" key={u[1]}><span className="live-user-avatar">{u[3] || '👤'}</span><div><b>{u[0]}</b><small>{u[1]} · Lv {u[2]}</small></div><button onClick={() => setSelected(u)}>Invite</button></div>)}</div>{selected && <ConfirmGuest user={selected} onClose={() => setSelected(null)} onInvited={onInvited} />}</div>;
 }
 
-function ConfirmGuest({ user, onClose, onInvited }: any) { const sendInvite = async () => { let fromUserId = 'demo-user'; try { fromUserId = localStorage.getItem('pardaisLiteUserId') || fromUserId; } catch {} const toUserId = `user-${String(user[1]).replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`; try { await api.post('/api/invites', { fromUserId, toUserId, toUsername: user[1], type: 'guest' }); onInvited(); } catch {} }; return <div className="center-modal-backdrop"><div className="confirm-guest-modal"><div className="modal-avatar">{user[3] || '👤'}</div><h2>{user[0]}</h2><p>{user[1]} · 🦁 {user[2]}</p><div className="confirm-text">Send a live guest invite to <b>{user[0]}</b>?</div><div className="modal-actions"><button onClick={onClose}>Cancel</button><button className="gradient-action" onClick={() => void sendInvite()}>Invite</button></div></div></div>; }
+function ConfirmGuest({ user, onClose, onInvited }: any) { const sendInvite = async () => { const fromUserId = auth.currentUser?.uid || ''; const toUserId = `user-${String(user[1]).replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`; try { await api.post('/api/invites', { fromUserId, toUserId, toUsername: user[1], type: 'guest' }); onInvited(); } catch {} }; return <div className="center-modal-backdrop"><div className="confirm-guest-modal"><div className="modal-avatar">{user[3] || '👤'}</div><h2>{user[0]}</h2><p>{user[1]} · 🦁 {user[2]}</p><div className="confirm-text">Send a live guest invite to <b>{user[0]}</b>?</div><div className="modal-actions"><button onClick={onClose}>Cancel</button><button className="gradient-action" onClick={() => void sendInvite()}>Invite</button></div></div></div>; }
 
-function PkInvitePage({ onBack, onSent }: any) { const [query,setQuery]=useState(''); const [selected,setSelected]=useState<any>(null); const results=liveUsers.filter(x=>`${x[0]} ${x[1]}`.toLowerCase().includes(query.toLowerCase())); const sendPkInvite = async () => { if (!selected) return; let fromUserId = 'demo-user'; try { fromUserId = localStorage.getItem('pardaisLiteUserId') || fromUserId; } catch {} const toUserId = `user-${String(selected[1]).replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`; try { await api.post('/api/pk/invites', { fromUserId, toUserId, toUsername: selected[1] }); onSent(); } catch {} }; return <div className="full-dark-page"><header className="flow-header"><button onClick={onBack}><ChevronLeft /></button><div><h1>Invite to 1v1</h1><small>Challenge a live user</small></div><b>1v1</b></header><div className="flow-search"><Search /><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name or handle..." /></div><p className="available-count">{results.length} live users available</p><div className="live-user-list">{results.map(u=><div className="live-user-row" key={u[1]}><span className="live-user-avatar">{u[3] || '👤'}</span><div><b>{u[0]}</b><small>{u[1]}</small></div><button onClick={()=>setSelected(u)}>⚡ Invite</button></div>)}</div>{selected&&<div className="center-modal-backdrop"><div className="pk-confirm-modal"><div className="modal-avatar">{selected[3] || '👤'}</div><h2>{selected[0]}</h2><p>{selected[1]} · 🦁 {selected[2]}</p><div className="confirm-text">Send a 1v1 live invite to <b>{selected[0]}</b></div><div className="modal-actions"><button onClick={()=>setSelected(null)}>Cancel</button><button className="gradient-action" onClick={() => void sendPkInvite()}>Invite</button></div></div></div>}</div>; }
+function PkInvitePage({ onBack, onSent }: any) { const [query,setQuery]=useState(''); const [selected,setSelected]=useState<any>(null); const results=liveUsers.filter(x=>`${x[0]} ${x[1]}`.toLowerCase().includes(query.toLowerCase())); const sendPkInvite = async () => { if (!selected) return; const fromUserId = auth.currentUser?.uid || ''; const toUserId = `user-${String(selected[1]).replace(/^@/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '-')}`; try { await api.post('/api/pk/invites', { fromUserId, toUserId, toUsername: selected[1] }); onSent(); } catch {} }; return <div className="full-dark-page"><header className="flow-header"><button onClick={onBack}><ChevronLeft /></button><div><h1>Invite to 1v1</h1><small>Challenge a live user</small></div><b>1v1</b></header><div className="flow-search"><Search /><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name or handle..." /></div><p className="available-count">{results.length} live users available</p><div className="live-user-list">{results.map(u=><div className="live-user-row" key={u[1]}><span className="live-user-avatar">{u[3] || '👤'}</span><div><b>{u[0]}</b><small>{u[1]}</small></div><button onClick={()=>setSelected(u)}>⚡ Invite</button></div>)}</div>{selected&&<div className="center-modal-backdrop"><div className="pk-confirm-modal"><div className="modal-avatar">{selected[3] || '👤'}</div><h2>{selected[0]}</h2><p>{selected[1]} · 🦁 {selected[2]}</p><div className="confirm-text">Send a 1v1 live invite to <b>{selected[0]}</b></div><div className="modal-actions"><button onClick={()=>setSelected(null)}>Cancel</button><button className="gradient-action" onClick={() => void sendPkInvite()}>Invite</button></div></div></div>}</div>; }
 
 function PkWaitingPage({ onCancel, onAccept, onIncoming }: any) { return <div className="full-dark-page waiting-page"><div className="pk-wait-card"><div className="pk-avatars"><div>🪽</div><span>•••</span><div>😎</div></div><div className="pk-names"><b>khokhar_1</b><b>AdeebArain</b></div><div className="wait-icon">◷</div><h1>Waiting for Response</h1><p>Invite sent to <b>AdeebArain</b></p><button onClick={onCancel}>Cancel Invite</button><button className="demo-accept" onClick={onAccept}>Accept Response</button><button className="demo-incoming" onClick={onIncoming}>Preview Incoming Request</button></div></div>; }
 
