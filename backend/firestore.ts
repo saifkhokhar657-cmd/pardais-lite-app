@@ -9,7 +9,7 @@ export async function add(collection: string, data: Record<string, unknown>, id?
   return ref.id;
 }
 
-export async function get(collection: string, id: string) {
+export async function get(collection: string, id: string): Promise<any | null> {
   const snap = await db.collection(collection).doc(id).get();
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
@@ -23,7 +23,7 @@ export async function remove(collection: string, id: string) {
   await db.collection(collection).doc(id).delete();
 }
 
-export async function list(collection: string, filters: Record<string, unknown> = {}, limit = 100) {
+export async function list(collection: string, filters: Record<string, unknown> = {}, limit = 100): Promise<Array<any>> {
   let q: Query<DocumentData> = db.collection(collection);
   for (const [field, value] of Object.entries(filters)) q = q.where(field, '==', value);
   const snap = await q.limit(limit).get();

@@ -10,5 +10,12 @@
     "noEmit": false,
     "types": ["node"]
   },
-  "include": ["server.ts", "backend/**/*.ts"]
+  "include": [
+    "server.ts",
+    "backend/auth.ts",
+    "backend/agora.ts",
+    "backend/firebase-admin.ts",
+    "backend/firestore.ts",
+    "backend/r2.ts"
+  ]
 }

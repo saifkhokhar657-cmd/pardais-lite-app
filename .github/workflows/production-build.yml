@@ -15,4 +15,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Remove legacy AppDeploy backend files
+        run: rm -f backend/index.ts backend/pardais.ts backend/realtime-subscribers.ts backend/realtime.ts
       - run: npm run build

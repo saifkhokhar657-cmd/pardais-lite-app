@@ -59,3 +59,7 @@ The browser does not receive the R2 secret. The backend creates a short-lived pr
 ## Important
 
 Do not paste Firebase service-account JSON, Agora App Certificate, R2 Secret Access Key, or any other production secret into source files, screenshots, GitHub, or chat.
+
+
+## Legacy AppDeploy cleanup
+The production server is `server.ts`. The old AppDeploy backend files are no longer used. CI removes legacy `backend/index.ts`, `backend/pardais.ts`, `backend/realtime-subscribers.ts`, and `backend/realtime.ts` before compilation so stale files in an existing repository cannot break the production build.

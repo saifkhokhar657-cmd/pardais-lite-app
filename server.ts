@@ -36,29 +36,29 @@ app.post('/api/auth/register', asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/users/:id', asyncRoute(async (req, res) => {
-  const user = await get('users', req.params.id);
+  const user = await get('users', String(req.params.id));
   if (!user) return res.status(404).json({ error: 'user not found' });
   return res.json({ success: true, user });
 }));
 
 app.get('/api/profile/:userId', asyncRoute(async (req, res) => {
-  const profile = await get('profiles', req.params.userId);
-  return res.json({ success: true, profile: profile ?? { userId: req.params.userId, name: 'Pardais User', bio: '' } });
+  const profile = await get('profiles', String(req.params.userId));
+  return res.json({ success: true, profile: profile ?? { userId: String(req.params.userId), name: 'Pardais User', bio: '' } });
 }));
 app.put('/api/profile/:userId', asyncRoute(async (req, res) => {
-  assertSelf(req, req.params.userId);
-  const profile = await update('profiles', req.params.userId, { ...req.body, userId: req.params.userId });
-  await update('users', req.params.userId, { name: `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim() || 'Pardais User', avatar: req.body.avatar ?? null });
+  assertSelf(req, String(req.params.userId));
+  const profile = await update('profiles', String(req.params.userId), { ...req.body, userId: String(req.params.userId) });
+  await update('users', String(req.params.userId), { name: `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim() || 'Pardais User', avatar: req.body.avatar ?? null });
   return res.json({ success: true, profile });
 }));
 
 app.get('/api/settings/:userId', asyncRoute(async (req, res) => {
-  const settings = await get('user_settings', req.params.userId);
-  return res.json({ success: true, settings: settings ?? { userId: req.params.userId, privateAccount: false, language: 'English', notifications: true, privateLiveEntry: false, privateGiftMvp: false } });
+  const settings = await get('user_settings', String(req.params.userId));
+  return res.json({ success: true, settings: settings ?? { userId: String(req.params.userId), privateAccount: false, language: 'English', notifications: true, privateLiveEntry: false, privateGiftMvp: false } });
 }));
 app.put('/api/settings/:userId', asyncRoute(async (req, res) => {
-  assertSelf(req, req.params.userId);
-  const settings = await update('user_settings', req.params.userId, { ...req.body, userId: req.params.userId });
+  assertSelf(req, String(req.params.userId));
+  const settings = await update('user_settings', String(req.params.userId), { ...req.body, userId: String(req.params.userId) });
   return res.json({ success: true, settings });
 }));
 
@@ -100,9 +100,9 @@ async function directory(ids: string[]) {
     return { id: userId, name: p?.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : (u?.name || 'Pardais User'), username: p?.username || u?.username || `@${userId.slice(0, 10)}`, avatar: p?.avatar || u?.avatar || '' };
   }));
 }
-app.get('/api/followers/:userId', asyncRoute(async (req, res) => { const rows: any[] = await list('follows', { followingId: req.params.userId }); const items = await directory(rows.map(x => String(x.followerId))); return res.json({ success: true, items, count: items.length }); }));
-app.get('/api/following/:userId', asyncRoute(async (req, res) => { const rows: any[] = await list('follows', { followerId: req.params.userId }); const items = await directory(rows.map(x => String(x.followingId))); return res.json({ success: true, items, count: items.length }); }));
-app.get('/api/friends/:userId', asyncRoute(async (req, res) => { const out: any[] = await list('follows', { followerId: req.params.userId }); const incoming: any[] = await list('follows', { followingId: req.params.userId }); const incomingIds = new Set(incoming.map(x => String(x.followerId))); const items = await directory(out.map(x => String(x.followingId)).filter(x => incomingIds.has(x))); return res.json({ success: true, items, count: items.length }); }));
+app.get('/api/followers/:userId', asyncRoute(async (req, res) => { const rows: any[] = await list('follows', { followingId: String(req.params.userId) }); const items = await directory(rows.map(x => String(x.followerId))); return res.json({ success: true, items, count: items.length }); }));
+app.get('/api/following/:userId', asyncRoute(async (req, res) => { const rows: any[] = await list('follows', { followerId: String(req.params.userId) }); const items = await directory(rows.map(x => String(x.followingId))); return res.json({ success: true, items, count: items.length }); }));
+app.get('/api/friends/:userId', asyncRoute(async (req, res) => { const out: any[] = await list('follows', { followerId: String(req.params.userId) }); const incoming: any[] = await list('follows', { followingId: String(req.params.userId) }); const incomingIds = new Set(incoming.map(x => String(x.followerId))); const items = await directory(out.map(x => String(x.followingId)).filter(x => incomingIds.has(x))); return res.json({ success: true, items, count: items.length }); }));
 
 app.get('/api/feed', asyncRoute(async (_req, res) => res.json({ success: true, items: await list('feed', {}, 30) })));
 app.get('/api/reels', asyncRoute(async (_req, res) => res.json({ success: true, items: await list('reels', {}, 30) })));
@@ -151,8 +151,8 @@ app.post('/api/live/heart', asyncRoute(async (req, res) => { const roomId = Stri
 
 app.post('/api/gifts/send', asyncRoute(async (req, res) => { const senderId = req.user!.uid; const receiverId = String(req.body?.receiverId || ''); const giftId = String(req.body?.giftId || ''); const quantity = Math.max(1, Number(req.body?.quantity || 1)); const coins = Math.max(0, Number(req.body?.coins || 0)); if (!receiverId || !giftId) return res.status(400).json({ error: 'receiverId and giftId are required' }); const id = await add('gift_transactions', { senderId, receiverId, giftId, quantity, coins, roomId: req.body?.roomId || null }); return res.status(201).json({ success: true, transactionId: id }); }));
 
-app.get('/api/wallet/:userId', asyncRoute(async (req, res) => { assertSelf(req, req.params.userId); let wallet: any = await get('wallets', req.params.userId); if (!wallet) wallet = await update('wallets', req.params.userId, { userId: req.params.userId, coins: 0, balance: 0 }); return res.json({ success: true, wallet }); }));
-app.get('/api/wallet/:userId/transactions', asyncRoute(async (req, res) => { assertSelf(req, req.params.userId); return res.json({ success: true, items: await list('wallet_transactions', { userId: req.params.userId }, 100) }); }));
+app.get('/api/wallet/:userId', asyncRoute(async (req, res) => { assertSelf(req, String(req.params.userId)); let wallet: any = await get('wallets', String(req.params.userId)); if (!wallet) wallet = await update('wallets', String(req.params.userId), { userId: String(req.params.userId), coins: 0, balance: 0 }); return res.json({ success: true, wallet }); }));
+app.get('/api/wallet/:userId/transactions', asyncRoute(async (req, res) => { assertSelf(req, String(req.params.userId)); return res.json({ success: true, items: await list('wallet_transactions', { userId: String(req.params.userId) }, 100) }); }));
 app.post('/api/wallet/transfer', asyncRoute(async (req, res) => {
   const userId = req.user!.uid, receiverId = String(req.body?.receiverId || ''), receiverUsername = String(req.body?.receiverUsername || ''), coins = Number(req.body?.coins), pin = String(req.body?.pin || '');
   if (!receiverId || !receiverUsername || !Number.isInteger(coins) || coins <= 0 || !/^\d{4}$/.test(pin)) return res.status(400).json({ error: 'valid receiver, positive coins and 4-digit PIN are required' });
@@ -163,20 +163,20 @@ app.post('/api/wallet/transfer', asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/creator/withdraw-account', asyncRoute(async (req, res) => { const userId = req.user!.uid; const id = await add('withdraw_accounts', { ...req.body, userId, account: String(req.body?.account || ''), method: String(req.body?.method || 'bank') }); return res.status(201).json({ success: true, accountId: id }); }));
-app.get('/api/creator/:userId', asyncRoute(async (req, res) => { assertSelf(req, req.params.userId); const gifts: any[] = await list('gift_transactions', { receiverId: req.params.userId }, 100); const exchanges: any[] = await list('creator_exchanges', { userId: req.params.userId }, 100); const withdrawals: any[] = await list('withdrawals', { userId: req.params.userId }, 100); const giftCoins = gifts.reduce((s,x) => s + Number(x.coins || 0), 0), exchanged = exchanges.reduce((s,x) => s + Number(x.coins || 0), 0), pendingWithdraw = withdrawals.filter(x => x.status === 'pending').reduce((s,x) => s + Number(x.amount || 0), 0); return res.json({ success: true, earnings: Math.max(0, giftCoins - exchanged), giftCoins, exchanged, pendingWithdraw, transactions: [...gifts, ...exchanges, ...withdrawals].slice(0,100) }); }));
+app.get('/api/creator/:userId', asyncRoute(async (req, res) => { assertSelf(req, String(req.params.userId)); const gifts: any[] = await list('gift_transactions', { receiverId: String(req.params.userId) }, 100); const exchanges: any[] = await list('creator_exchanges', { userId: String(req.params.userId) }, 100); const withdrawals: any[] = await list('withdrawals', { userId: String(req.params.userId) }, 100); const giftCoins = gifts.reduce((s,x) => s + Number(x.coins || 0), 0), exchanged = exchanges.reduce((s,x) => s + Number(x.coins || 0), 0), pendingWithdraw = withdrawals.filter(x => x.status === 'pending').reduce((s,x) => s + Number(x.amount || 0), 0); return res.json({ success: true, earnings: Math.max(0, giftCoins - exchanged), giftCoins, exchanged, pendingWithdraw, transactions: [...gifts, ...exchanges, ...withdrawals].slice(0,100) }); }));
 app.post('/api/creator/exchange', asyncRoute(async (req, res) => { const userId=req.user!.uid, coins=Number(req.body?.coins); if(!Number.isInteger(coins)||coins<=0)return res.status(400).json({error:'positive coins required'}); const gifts:any[]=await list('gift_transactions',{receiverId:userId},1000), exchanges:any[]=await list('creator_exchanges',{userId},1000); const available=gifts.reduce((s,x)=>s+Number(x.coins||0),0)-exchanges.reduce((s,x)=>s+Number(x.coins||0),0); if(coins>available)return res.status(400).json({error:`insufficient creator earnings: ${available}`}); const id=await add('creator_exchanges',{userId,coins,walletCoins:coins,status:'completed'}); const wallet:any=await get('wallets',userId)||await update('wallets',userId,{userId,coins:0,balance:0}); const balance=Number(wallet.coins||0)+coins; await update('wallets',userId,{coins:balance,balance}); await add('wallet_transactions',{userId,counterpartyId:'creator-center',counterpartyUsername:'Creator Center',type:'Received',coins,balanceAfter:balance}); return res.status(201).json({success:true,exchangeId:id,coins,walletBalance:balance}); }));
 app.post('/api/withdrawals', asyncRoute(async (req,res)=>{const userId=req.user!.uid; const id=await add('withdrawals',{...req.body,userId,status:'pending'}); return res.status(201).json({success:true,withdrawalId:id,status:'pending'});}));
 
 app.post('/api/pk/create', asyncRoute(async (req,res)=>{const id=await add('pk_matches',{...req.body,hostId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,matchId:id,status:'pending'});}));
 app.post('/api/comments', asyncRoute(async(req,res)=>{const text=String(req.body?.text||'').trim(),targetId=String(req.body?.targetId||'');if(!targetId||!text)return res.status(400).json({error:'targetId and text are required'});const id=await add('comments',{userId:req.user!.uid,targetId,text});return res.status(201).json({success:true,id});}));
-app.get('/api/comments/:targetId', asyncRoute(async(req,res)=>res.json({success:true,items:await list('comments',{targetId:req.params.targetId},100)})));
+app.get('/api/comments/:targetId', asyncRoute(async(req,res)=>res.json({success:true,items:await list('comments',{targetId:String(req.params.targetId)},100)})));
 app.post('/api/moderation', asyncRoute(async(req,res)=>{const action=String(req.body?.action||'');if(!['moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});const targetUserId=String(req.body?.targetUserId||'');const id=await add('moderation_actions',{...req.body,actorId:req.user!.uid,targetUserId,action,status:action==='report'?'pending':'completed'});if(action==='block')await add('blocks',{blockerId:req.user!.uid,blockedUserId:targetUserId});return res.status(201).json({success:true,actionId:id,action});}));
 app.post('/api/invites', asyncRoute(async(req,res)=>{const id=await add('invites',{...req.body,fromUserId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
-app.post('/api/invites/:id/respond', asyncRoute(async(req,res)=>{const invite:any=await get('invites',req.params.id);if(!invite)return res.status(404).json({error:'invite not found'});if(invite.toUserId!==req.user!.uid)return res.status(403).json({error:'not your invite'});const status=String(req.body?.status||'');if(!['accepted','rejected','cancelled'].includes(status))return res.status(400).json({error:'invalid invite response'});await update('invites',req.params.id,{status});return res.json({success:true,inviteId:req.params.id,status});}));
+app.post('/api/invites/:id/respond', asyncRoute(async(req,res)=>{const invite:any=await get('invites',String(req.params.id));if(!invite)return res.status(404).json({error:'invite not found'});if(invite.toUserId!==req.user!.uid)return res.status(403).json({error:'not your invite'});const status=String(req.body?.status||'');if(!['accepted','rejected','cancelled'].includes(status))return res.status(400).json({error:'invalid invite response'});await update('invites',String(req.params.id),{status});return res.json({success:true,inviteId:String(req.params.id),status});}));
 app.post('/api/pk/invites', asyncRoute(async(req,res)=>{const id=await add('pk_invites',{...req.body,fromUserId:req.user!.uid,type:'pk',status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
 app.post('/api/notifications', asyncRoute(async(req,res)=>{const id=await add('notifications',{...req.body,createdAt:now(),read:false});return res.status(201).json({success:true,id});}));
 app.post('/api/messages', asyncRoute(async(req,res)=>{const id=await add('messages',{...req.body,senderId:req.user!.uid});return res.status(201).json({success:true,messageId:id});}));
-app.delete('/api/messages/:userId/:peerId', asyncRoute(async(req,res)=>{assertSelf(req,req.params.userId);const rows=await list('messages',{senderId:req.params.userId,receiverId:req.params.peerId},1000);for(const x of rows)await remove('messages',x.id);return res.json({success:true,deleted:rows.length});}));
+app.delete('/api/messages/:userId/:peerId', asyncRoute(async(req,res)=>{assertSelf(req,String(req.params.userId));const rows=await list('messages',{senderId:String(req.params.userId),receiverId:String(req.params.peerId)},1000);for(const x of rows)await remove('messages',x.id);return res.json({success:true,deleted:rows.length});}));
 app.post('/api/wallet/recharge-intent', asyncRoute(async(req,res)=>{const id=await add('wallet_recharge_intents',{...req.body,userId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,intentId:id,status:'pending'});}));
 app.post('/api/actions', asyncRoute(async(req,res)=>{const id=await add('app_actions',{...req.body,userId:req.user!.uid});return res.status(201).json({success:true,actionId:id});}));
 app.get('/api/actions', asyncRoute(async(_req,res)=>res.json({success:true,items:await list('app_actions',{},100)})));
