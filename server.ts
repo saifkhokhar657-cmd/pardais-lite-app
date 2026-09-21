@@ -15,6 +15,19 @@ const origins = (process.env.CORS_ORIGINS || 'https://pardaislite.soulverseapps.
 
 app.use(cors({ origin: origins, credentials: false }));
 app.use(express.json({ limit: '2mb' }));
+
+// Always serve the React SPA for browser routes. Keep API routes JSON-only.
+const sendSpa = (_req: express.Request, res: express.Response) => {
+  const dist = path.join(process.cwd(), 'dist');
+  return res.sendFile(path.join(dist, 'index.html'));
+};
+if (process.env.NODE_ENV === 'production') {
+  app.get('/', sendSpa);
+  app.get('/login', sendSpa);
+  app.get('/signup', sendSpa);
+  app.get('/register', sendSpa);
+}
+
 app.get('/api/_healthcheck', (_req, res) => res.json({ message: 'Success' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', time: now() }));
 app.get('/api/config', (_req, res) => res.json({
@@ -187,8 +200,9 @@ app.post('/api/media/presign', asyncRoute(async(req,res)=>{const contentType=Str
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(process.cwd(), 'dist');
-  app.use(express.static(dist));
-  app.get(/^(?!\/api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.use(express.static(dist, { index: false }));
+  // SPA fallback for all non-API browser routes. Never turn API errors into HTML.
+  app.get(/^(?!\/api(?:\/|$)).*/, sendSpa);
 }
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

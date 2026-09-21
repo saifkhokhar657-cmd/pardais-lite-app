@@ -72,27 +72,59 @@ function App() {
   const [profileTab, setProfileTab] = useState<'Public' | 'Private' | 'Saved'>('Public');
   const [liveView, setLiveView] = useState<'discover' | 'solo' | 'inviteGuest' | 'guestRoom' | 'pkInvite' | 'pkWaiting' | 'pkIncoming' | 'pkPreMatch' | 'pkRoom'>('discover');
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'forgot' | 'verify' | 'reset' | 'success'>(() => {
-    try { return localStorage.getItem('pardaisLiteAuth') === '1' ? 'login' : 'login'; } catch { return 'login'; }
+    try {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/signup' || path === '/register') return 'signup';
+      return 'login';
+    } catch { return 'login'; }
   });
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [activeLiveRoom, setActiveLiveRoom] = useState<any | null>(null);
 
-  useEffect(() => onAuthStateChanged(auth, user => {
-    setAuthenticated(Boolean(user));
-    setAuthReady(true);
-    if (user) {
-      try { localStorage.setItem('pardaisLiteUserId', user.uid); localStorage.setItem('pardaisLiteEmail', user.email || ''); localStorage.setItem('pardaisLiteAuth', '1'); } catch {}
-      void api.post('/api/auth/register', { name: user.displayName || 'Pardais User', avatar: user.photoURL || null }).catch(() => {});
-    } else { try { localStorage.removeItem('pardaisLiteAuth'); localStorage.removeItem('pardaisLiteUserId'); } catch {} }
-  }), []);
+  useEffect(() => {
+    let mounted = true;
+    let fallbackTimer: number | undefined;
+    try {
+      const unsubscribe = onAuthStateChanged(auth, user => {
+        if (!mounted) return;
+        setAuthenticated(Boolean(user));
+        setAuthReady(true);
+        if (user) {
+          try {
+            localStorage.setItem('pardaisLiteUserId', user.uid);
+            localStorage.setItem('pardaisLiteEmail', user.email || '');
+            localStorage.setItem('pardaisLiteAuth', '1');
+          } catch {}
+          void api.post('/api/auth/register', { name: user.displayName || 'Pardais User', avatar: user.photoURL || null }).catch(() => {});
+        } else {
+          try {
+            localStorage.removeItem('pardaisLiteAuth');
+            localStorage.removeItem('pardaisLiteUserId');
+          } catch {}
+        }
+      });
+      // Never leave the user trapped on the splash screen if Firebase auth is slow/offline.
+      fallbackTimer = window.setTimeout(() => {
+        if (mounted) setAuthReady(true);
+      }, 3500);
+      return () => {
+        mounted = false;
+        if (fallbackTimer) window.clearTimeout(fallbackTimer);
+        unsubscribe();
+      };
+    } catch {
+      setAuthReady(true);
+      return () => { mounted = false; if (fallbackTimer) window.clearTimeout(fallbackTimer); };
+    }
+  }, []);
 
   useEffect(() => {
     if (!splash) return;
     const timer = window.setTimeout(() => {
       setSplash(false);
       try { localStorage.setItem('pardaisLiteSplashSeen', '1'); } catch {}
-    }, 2200);
+    }, 1800);
     return () => window.clearTimeout(timer);
   }, [splash]);
 
@@ -126,7 +158,7 @@ function App() {
     else nav('profile');
   };
 
-  if (splash || !authReady) return <PardaisSplash />;
+  if (splash) return <PardaisSplash />;
   if (!authenticated) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthenticated={() => setAuthenticated(true)} />;
   if (fullPage === 'findFriends') return <FindFriendsPage onClose={() => setFullPage(null)} />;
   if (fullPage === 'level') return <LevelSystemPage onBack={() => setFullPage(null)} />;
@@ -165,7 +197,21 @@ function AuthScreen({ mode, setMode, onAuthenticated }: { mode: 'login' | 'signu
     setError('');
     if (!name.trim() || !email.trim() || !password) return setError('Please enter your name, email and password.');
     if (password.length < 8) return setError('Password must be at least 8 characters.');
-    try { const cred = await createUserWithEmailAndPassword(auth, email.trim(), password); await updateProfile(cred.user, { displayName: name.trim() }); await api.post('/api/auth/register', { name: name.trim() }); onAuthenticated(); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not create account.'); }
+    if (password !== confirmPassword) return setError('Passwords do not match.');
+    if (!remember) return setError('Please agree to the Terms & Privacy Policy.');
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(cred.user, { displayName: name.trim() });
+      await api.post('/api/auth/register', { name: name.trim() });
+      onAuthenticated();
+    } catch (e: any) {
+      const code = String(e?.code || '');
+      const message = code === 'auth/email-already-in-use' ? 'This email is already registered. Please Login.' :
+        code === 'auth/invalid-email' ? 'Please enter a valid email address.' :
+        code === 'auth/weak-password' ? 'Password must be at least 8 characters.' :
+        String(e?.message || 'Could not create account.').replace(/^Firebase:\s*/i, '');
+      setError(message);
+    }
   };
   const login = async () => {
     setError(''); if (!email.trim() || !password) return setError('Please enter email and password.');
@@ -175,7 +221,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }: { mode: 'login' | 'signu
   const requestReset = async () => { setError(''); if (!email.trim()) return setError('Please enter an email.'); try { await sendPasswordResetEmail(auth, email.trim()); setError('Password reset email sent. Check your inbox.'); } catch (e: any) { setError(e?.message?.replace('Firebase: ', '') || 'Could not send reset email.'); } };
   if (mode === 'success') return <main className='auth-screen'><div className='auth-success'><div className='auth-success-icon'>✓</div><h1>Password Reset!</h1><p>Your password reset link has been sent.</p><button onClick={() => { resetState(); setMode('login'); }}>Go to Login</button></div></main>;
   if (mode === 'forgot' || mode === 'verify' || mode === 'reset') return <main className='auth-screen'><AuthHeader title='PARDAIS' subtitle='RESET PASSWORD' onBack={() => { resetState(); setMode('login'); }} /><div className='auth-card auth-card-compact'><p>Enter your email to receive a secure Firebase password reset link.</p><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthError message={error}/><button className='auth-primary' onClick={() => void requestReset()}>Send Reset Email</button></div></main>;
-  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>WELCOME BACK</span></div><div className='auth-card'>{mode === 'signup' ? <><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound />} onChange={setName} /><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='Create a password' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole />} onChange={setConfirmPassword} /><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={() => void createAccount()}>Create Account</button><div className='auth-footer'>Already have an account? <button onClick={() => { resetState(); setMode('login'); }}>Login</button></div></> : <><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='********' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>Remember Me</span></label><button className='auth-link' onClick={() => { resetState(); setMode('forgot'); }}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={() => void login()}>Login</button><button className='auth-link' style={{ width: '100%', marginTop: 10 }} onClick={() => void googleLogin()}>Continue with Google</button><div className='auth-footer'>Don't have an account? <button onClick={() => { resetState(); setMode('signup'); }}>Sign Up</button></div></>}</div></main>;
+  return <main className='auth-screen'><div className='auth-brand'><PardaisLiteLogo compact={false}/><h1>PARDAIS</h1><span>WELCOME BACK</span></div><div className='auth-card'>{mode === 'signup' ? <><p>Create your Pardais Lite account.</p><AuthField label='FULL NAME' value={name} type='text' placeholder='Your full name' icon={<UserRound />} onChange={setName} /><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='Create a password' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><AuthField label='CONFIRM PASSWORD' value={confirmPassword} type='password' placeholder='Confirm your password' icon={<LockKeyhole />} onChange={setConfirmPassword} /><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>I agree to the Terms & Privacy Policy</span></label><AuthError message={error}/><button className='auth-primary' onClick={() => void createAccount()}>Create Account</button><div className='auth-footer'>Already have an account? <button type='button' onClick={() => { resetState(); window.history.replaceState({}, '', '/login'); setMode('login'); }}>Login</button></div></> : <><AuthField label='EMAIL' value={email} type='email' placeholder='example@gmail.com' icon={<MessageSquare />} onChange={setEmail} /><AuthField label='PASSWORD' value={password} type={showPassword ? 'text' : 'password'} placeholder='********' icon={<LockKeyhole />} onChange={setPassword} show={showPassword} onToggle={() => setShowPassword(!showPassword)} /><div className='auth-row'><label className='auth-check'><input type='checkbox' checked={remember} onChange={e => setRemember(e.target.checked)} /><span>Remember Me</span></label><button className='auth-link' onClick={() => { resetState(); setMode('forgot'); }}>Forgot Password?</button></div><AuthError message={error}/><button className='auth-primary' onClick={() => void login()}>Login</button><button className='auth-link' style={{ width: '100%', marginTop: 10 }} onClick={() => void googleLogin()}>Continue with Google</button><div className='auth-footer'>Don't have an account? <button type='button' onClick={() => { resetState(); window.history.replaceState({}, '', '/signup'); setMode('signup'); }}>Sign Up</button></div></>}</div></main>;
 }
 
 function AuthHeader({ title, subtitle, onBack }: { title: string; subtitle: string; onBack: () => void }) { return <div className='auth-header'><button onClick={onBack}><ChevronLeft /></button><div><h1>{title}</h1><span>{subtitle}</span></div></div>; }

@@ -162,3 +162,5 @@
 .splash-loading i{width:4px;height:13px;border-radius:3px;background:#ffbf24;animation:splash-eq .85s ease-in-out infinite}
 .splash-loading i:nth-child(2){height:21px;animation-delay:.1s}.splash-loading i:nth-child(3){height:29px;animation-delay:.2s}.splash-loading i:nth-child(4){height:19px;animation-delay:.3s}.splash-loading i:nth-child(5){height:11px;animation-delay:.4s}
 @keyframes splash-eq{50%{transform:scaleY(.45);opacity:.6}}
+
+html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{overflow-x:hidden;}
