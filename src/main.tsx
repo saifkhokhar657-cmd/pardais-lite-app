@@ -31,8 +31,32 @@ function BootScreen({ error }: { error?: string }) {
 
 async function loadFirebaseRuntimeConfig() {
   if ((window as any).__PARDAIS_FIREBASE_CONFIG__) return;
-  const response = await fetch(`${window.location.origin}/firebase-config.json`, { cache: 'no-store' });
+
+  // In production the web app may be hosted separately from the Railway API.
+  // Never try to JSON.parse the SPA HTML fallback returned by the web host.
+  // Prefer build-time Firebase config when available; otherwise load the public
+  // Firebase web config from the API server.
+  const buildConfig = {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  };
+  if (Object.values(buildConfig).filter(Boolean).length >= 6) {
+    (window as any).__PARDAIS_FIREBASE_CONFIG__ = buildConfig;
+    return;
+  }
+
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || 'https://api.pardaislite.soulverseapps.com').replace(/\/$/, '');
+  const response = await fetch(`${apiBase}/firebase-config.json`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const contentType = response.headers.get('content-type') || '';
   if (!response.ok) throw new Error(`Firebase runtime config request failed (${response.status})`);
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`Firebase runtime config returned ${contentType || 'non-JSON'} from ${apiBase}`);
+  }
   const config = await response.json();
   (window as any).__PARDAIS_FIREBASE_CONFIG__ = config;
 }
