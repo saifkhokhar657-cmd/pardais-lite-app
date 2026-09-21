@@ -26,4 +26,6 @@ export async function createDownloadUrl(key: string) {
   return getSignedUrl(client(), command, { expiresIn });
 }
 
+export async function uploadObject(key: string, body: Uint8Array, contentType: string) { const bucket = process.env.R2_BUCKET_NAME; if (!bucket) throw new Error('R2_BUCKET_NAME is not configured'); await client().send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })); return { key, publicUrl: `${(process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '')}/${key}` }; }
+
 export async function deleteObject(key: string) { const bucket = process.env.R2_BUCKET_NAME; if (!bucket) throw new Error('R2_BUCKET_NAME is not configured'); await client().send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); }

@@ -5,7 +5,7 @@ import cors from 'cors';
 import { add, get, list, now, remove, update, upsertUser } from './backend/firestore.js';
 import { requireAuth, assertSelf, type AuthenticatedRequest } from './backend/auth.js';
 import { buildRtcToken, numericAgoraUid } from './backend/agora.js';
-import { createDownloadUrl, createUploadUrl, deleteObject } from './backend/r2.js';
+import { createDownloadUrl, createUploadUrl, deleteObject, uploadObject } from './backend/r2.js';
 import { db, firebaseCredentialsConfigured } from './backend/firebase-admin.js';
 import type { Transaction } from 'firebase-admin/firestore';
 
@@ -300,6 +300,7 @@ app.get('/api/actions', asyncRoute(async(_req,res)=>res.json({success:true,items
 
 app.post('/api/media/download', asyncRoute(async(req,res)=>{ const key=String(req.body?.key||''); if(!key.startsWith(`users/${req.user!.uid}/`)) return res.status(403).json({error:'media access denied'}); return res.json({success:true,url:await createDownloadUrl(key)}); }));
 app.post('/api/media/presign', asyncRoute(async(req,res)=>{const contentType=String(req.body?.contentType||'application/octet-stream');if(!contentType.startsWith('image/')&&!contentType.startsWith('video/'))return res.status(400).json({error:'Only image and video uploads are allowed'});const safeName=String(req.body?.fileName||'upload.bin').replace(/[^a-zA-Z0-9._-]/g,'_');const key=`users/${req.user!.uid}/${Date.now()}-${safeName}`;return res.json({success:true,...await createUploadUrl(key,contentType)});}));
+app.post('/api/media/upload', express.raw({ type: ['video/*','image/*','application/octet-stream'], limit: '200mb' }), asyncRoute(async(req,res)=>{ const contentType=String(req.headers['content-type']||'application/octet-stream'); if(!contentType.startsWith('video/')&&!contentType.startsWith('image/')) return res.status(400).json({error:'Only image and video uploads are allowed'}); const name=String(req.headers['x-file-name']||'upload.bin').replace(/[^a-zA-Z0-9._-]/g,'_'); const key=`users/${req.user!.uid}/${Date.now()}-${name}`; const body=Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body||''); if(!body.length)return res.status(400).json({error:'Empty upload'}); return res.json({success:true,...await uploadObject(key,body,contentType)}); }));
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(process.cwd(), 'dist');
