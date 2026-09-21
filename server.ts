@@ -5,7 +5,7 @@ import cors from 'cors';
 import { add, get, list, now, remove, update, upsertUser } from './backend/firestore.js';
 import { requireAuth, assertSelf, type AuthenticatedRequest } from './backend/auth.js';
 import { buildRtcToken, numericAgoraUid } from './backend/agora.js';
-import { createDownloadUrl, createUploadUrl } from './backend/r2.js';
+import { createDownloadUrl, createUploadUrl, deleteObject } from './backend/r2.js';
 import { db, firebaseCredentialsConfigured } from './backend/firebase-admin.js';
 import type { Transaction } from 'firebase-admin/firestore';
 
@@ -175,25 +175,44 @@ app.get('/api/following/:userId', asyncRoute(async (req, res) => { const rows: a
 app.get('/api/friends/:userId', asyncRoute(async (req, res) => { const out: any[] = await list('follows', { followerId: String(req.params.userId) }); const incoming: any[] = await list('follows', { followingId: String(req.params.userId) }); const incomingIds = new Set(incoming.map(x => String(x.followerId))); const items = await directory(out.map(x => String(x.followingId)).filter(x => incomingIds.has(x))); return res.json({ success: true, items, count: items.length }); }));
 
 app.get('/api/feed', asyncRoute(async (req, res) => {
-  const rows: any[] = await list('reels', {}, 100);
-  const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,30).map(async r => {
+  const rows: any[] = await list('reels', {}, 200);
+  const mode = String(req.query?.mode || 'for-you');
+  const following = new Set((await list('follows', { followerId: req.user!.uid }, 5000)).map((x:any)=>String(x.followingId)));
+  const visible = rows.filter(x => x.status === 'published' && x.visibility !== 'private' && (mode !== 'following' || following.has(String(x.userId)))).sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,50);
+  const items = await Promise.all(visible.map(async r => {
     const author: any = await get('profiles', String(r.userId));
     const likes = await list('reel_likes', { reelId: r.id }, 5000);
-    return { ...r, likesCount: likes.length, author: { name: author?.firstName ? `${author.firstName} ${author.lastName||''}`.trim() : 'Pardais User', username: author?.username || '', avatar: author?.avatar || '' } };
+    const saved = await list('saved_reels', { reelId: r.id, userId: req.user!.uid }, 5);
+    const comments = await list('comments', { targetId: r.id }, 5000);
+    return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe: saved.length>0, commentsCount: comments.length,
+      author: { name: author?.firstName ? `${author.firstName} ${author.lastName||''}`.trim() : 'Pardais User', username: author?.username || '', avatar: author?.avatar || '' } };
   }));
   return res.json({ success: true, items });
 }));
 app.get('/api/reels', asyncRoute(async (req, res) => {
-  const rows: any[] = await list('reels', {}, 100);
-  const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,30).map(async r => { const likes=await list('reel_likes',{reelId:r.id},5000); return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid) }; }));
+  const mine = String(req.query?.mine || '') === '1';
+  const rows: any[] = await list('reels', mine ? { userId: req.user!.uid } : {}, 200);
+  const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,100).map(async r => {
+    const likes=await list('reel_likes',{reelId:r.id},5000); const saved=await list('saved_reels',{reelId:r.id,userId:req.user!.uid},5);
+    return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe:saved.length>0 };
+  }));
   return res.json({ success: true, items });
 }));
 app.post('/api/reels', asyncRoute(async (req,res) => {
   const mediaUrl=String(req.body?.mediaUrl||'').trim(), key=String(req.body?.key||'').trim(), caption=String(req.body?.caption||'').trim();
   if (!mediaUrl || !key || !key.startsWith(`users/${req.user!.uid}/`)) return res.status(400).json({ error:'Valid uploaded media is required.' });
-  const id=await add('reels',{userId:req.user!.uid,mediaUrl,key,caption,status:'published',likesCount:0});
-  return res.status(201).json({success:true,reel:{id,userId:req.user!.uid,mediaUrl,key,caption,status:'published',likesCount:0}});
+  const status=String(req.body?.status||'published')==='draft'?'draft':'published';
+  const visibility=String(req.body?.visibility||'public')==='private'?'private':'public';
+  const hashtags=Array.isArray(req.body?.hashtags)?req.body.hashtags.map((x:any)=>String(x).replace(/^#/,'')).filter(Boolean).slice(0,5):[];
+  const id=await add('reels',{userId:req.user!.uid,mediaUrl,key,caption,location:String(req.body?.location||''),hashtags,status,visibility,allowComments:req.body?.allowComments!==false,likesCount:0});
+  return res.status(201).json({success:true,reel:{id,userId:req.user!.uid,mediaUrl,key,caption,status,visibility,hashtags}});
 }));
+app.patch('/api/reels/:id', asyncRoute(async(req,res)=>{
+  const id=String(req.params.id), reel:any=await get('reels',id); if(!reel)return res.status(404).json({error:'reel not found'}); assertSelf(req,String(reel.userId));
+  const patch:any={}; if(req.body?.status)patch.status=String(req.body.status); if(req.body?.visibility)patch.visibility=String(req.body.visibility); if(req.body?.caption!==undefined)patch.caption=String(req.body.caption); if(req.body?.location!==undefined)patch.location=String(req.body.location); if(Array.isArray(req.body?.hashtags))patch.hashtags=req.body.hashtags.map((x:any)=>String(x).replace(/^#/,'')).slice(0,5); await update('reels',id,patch); return res.json({success:true});
+}));
+app.delete('/api/reels/:id', asyncRoute(async(req,res)=>{const id=String(req.params.id),reel:any=await get('reels',id);if(!reel)return res.status(404).json({error:'reel not found'});assertSelf(req,String(reel.userId));await update('reels',id,{status:'deleted',deletedAt:now()});try{if(reel.key)await deleteObject(reel.key)}catch{}return res.json({success:true});}));
+app.post('/api/reels/:id/save', asyncRoute(async(req,res)=>{const reelId=String(req.params.id),userId=req.user!.uid;const existing=await list('saved_reels',{reelId,userId},5);if(existing.length){for(const x of existing)await remove('saved_reels',x.id)}else await add('saved_reels',{reelId,userId});return res.json({success:true,saved:!existing.length});}));
 app.post('/api/reels/:id/like', asyncRoute(async(req,res)=>{
   const reelId=String(req.params.id), userId=req.user!.uid, existing=await list('reel_likes',{reelId,userId},5);
   if(existing.length){ for(const x of existing) await remove('reel_likes',x.id); } else await add('reel_likes',{reelId,userId});
