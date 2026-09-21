@@ -36,6 +36,7 @@ function App() {
     try { return localStorage.getItem('pardaisLiteSplashSeen') !== '1'; } catch { return true; }
   });
   const [tab, setTab] = useState<Tab>('home');
+  const [createMode, setCreateMode] = useState<'upload' | 'live'>('upload');
   const [subPage, setSubPage] = useState<SubPage>(null);
   const [homeMode, setHomeMode] = useState<'Following' | 'For You'>('For You');
   const [liveMode, setLiveMode] = useState<'For You' | 'PK' | 'Following'>('For You');
@@ -152,6 +153,7 @@ function App() {
     setProfileOverlay(null);
     setFullPage(null);
     if (next !== 'live') setLiveView('discover');
+    if (next === 'create') setCreateMode('upload');
   };
   const back = () => {
     if (subPage) setSubPage(null);
@@ -177,8 +179,8 @@ function App() {
 
   return <div className="app-shell"><div className="phone">
     {tab === 'home' && <HomeScreen homeMode={homeMode} setHomeMode={setHomeMode} liked={liked} setLiked={setLiked} saved={saved} setSaved={setSaved} followed={followed} setFollowed={setFollowed} onSearch={() => setFullPage('findFriends')} />}
-    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} />}
-    {tab === 'create' && <CreateScreen camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); }} />}
+    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} onGoLiveSetup={() => { setCreateMode('live'); setTab('create'); }} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} />}
+    {tab === 'create' && <CreateScreen mode={createMode} camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); }} />}
     {tab === 'inbox' && <InboxScreen />}
     {tab === 'profile' && <ProfileScreen onSettings={() => setSubPage('settings')} onEdit={() => setSubPage('editProfile')} onFollowers={() => setSubPage('followers')} onShare={() => setProfileOverlay('share')} onLevel={() => setFullPage('level')} profileTab={profileTab} setProfileTab={setProfileTab} onCreator={() => setSubPage('creator')} onAgency={() => setSubPage('agency')} onWallet={() => setSubPage('wallet')} />}
     {tab !== 'create' && <BottomNav tab={tab} nav={nav} />}
@@ -224,25 +226,26 @@ function HomeScreen({ homeMode, setHomeMode, liked, setLiked, saved, setSaved, f
  </main>;
 }
 
-function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom }: any) {
+function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom }: any) {
   const [rooms, setRooms] = useState<any[]>([]);
   useEffect(() => { void api.get('/api/live/rooms').then(r => setRooms(r.data?.rooms ?? [])).catch(() => setRooms([])); }, [activeLiveRoom]);
   if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} />;
 
   return <main className='live-page'>
-    <div className='live-header'><h1>Discover</h1><div className='header-actions'><button className='go-live' onClick={() => nav('create')}><Zap /> Go Live</button><button className='round-search'><Search /></button></div></div>
+    <div className='live-header'><h1>Discover</h1><div className='header-actions'><button className='go-live' onClick={onGoLiveSetup}><Zap /> Go Live</button><button className='round-search'><Search /></button></div></div>
     <div className='live-tabs'>{(['For You','PK','Following'] as const).map(x => <button key={x} className={liveMode === x ? 'live-tab selected' : 'live-tab'} onClick={() => setLiveMode(x)}>{x === 'PK' ? '⚔ PK' : x}</button>)}</div>
     {liveMode === 'PK' ? <div className='pk-discover-card'><div className='pk-live-pill'>● LIVE</div><div className='pk-timer'>PK</div><div className='pk-discover-side left'><div className='pk-discover-avatar'>⚔</div><b>PK Battles</b><span>Live</span></div><div className='pk-discover-mark'>PK</div><div className='pk-discover-side right'><div className='pk-discover-avatar'>⚡</div><b>Join a battle</b><span>Now</span></div></div> : rooms.length ? <div className='live-grid'>{rooms.map((r:any) => <button className='live-card' key={r.id} onClick={async () => { try { const join = await api.post('/api/live/join', { roomId: r.id }); onOpenRoom({ ...r, agora: join.data.agora, isHost: false }); } catch {} }}><div className='card-top'><span className='mode-logo'>{String(r.mode || 'LIVE').toUpperCase()}</span><small>LIVE</small></div><div className='host-ring'><span>{String(r.host?.name || 'P').slice(0,1)}</span></div><div className='card-name'>{r.host?.name || 'Pardais Host'}</div><div className='card-bottom'><span>{r.title || 'Pardais Live'}</span><b>🟢</b></div></button>)}</div> : <div className='following-empty' style={{position:'relative',inset:'auto',minHeight:320}}><Video/><b>No live rooms</b><span>Live rooms will appear here when real hosts go live.</span></div>}
   </main>;
 }
 
-function CreateScreen({ camera, setCamera, onClose, onGoLive }: any) {
+function CreateScreen({ mode='upload', camera, setCamera, onClose, onGoLive }: any) {
  const videoRef=useRef<HTMLVideoElement|null>(null); const streamRef=useRef<MediaStream|null>(null); const recorderRef=useRef<MediaRecorder|null>(null); const chunksRef=useRef<Blob[]>([]); const fileRef=useRef<HTMLInputElement|null>(null);
  const [micOn,setMicOn]=useState(true); const [camOn,setCamOn]=useState(true); const [facing,setFacing]=useState<'user'|'environment'>('user'); const [zoom,setZoom]=useState(1); const [effect,setEffect]=useState(false); const [recording,setRecording]=useState(false); const [uploading,setUploading]=useState(false); const [error,setError]=useState('');
+ const isLive=mode==='live';
  const stopStream=()=>{streamRef.current?.getTracks().forEach(t=>t.stop());streamRef.current=null;};
  const startCamera=async(nextFacing=facing)=>{ stopStream(); setError(''); try { const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:nextFacing},width:{ideal:1080},height:{ideal:1920}},audio:true}); streamRef.current=stream; if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();} setCamOn(true); setMicOn(true); } catch(e:any){setError('Camera/microphone permission is required.');setCamOn(false);setMicOn(false);} };
  useEffect(()=>{void startCamera('user'); return()=>{stopStream();};},[]);
- const uploadFile=async(file:File)=>{ if(!file.type.startsWith('video/')){window.alert('Please select a video.');return;} setUploading(true); try { const p=await api.post('/api/media/presign',{fileName:file.name,contentType:file.type}); const put=await fetch(p.data.url,{method:'PUT',headers:{'Content-Type':file.type},body:file}); if(!put.ok) throw new Error('R2 upload failed'); await api.post('/api/reels',{key:p.data.key,mediaUrl:p.data.publicUrl,caption:file.name.replace(/\.[^.]+$/,'')}); window.alert('Video uploaded successfully.'); } catch(e:any){window.alert(e?.message||'Video upload failed.')} finally{setUploading(false);} };
+ const uploadFile=async(file:File)=>{ if(!file.type.startsWith('video/')){window.alert('Please select a video.');return;} setUploading(true); try { const p=await api.post('/api/media/presign',{fileName:file.name,contentType:file.type}); const put=await fetch(p.data.url,{method:'PUT',headers:{'Content-Type':file.type},body:file}); if(!put.ok) throw new Error('R2 upload failed'); await api.post('/api/reels',{key:p.data.key,mediaUrl:p.data.publicUrl,caption:file.name.replace(/\.[^.]+$/,'')}); window.alert('Video uploaded successfully.'); onClose(); } catch(e:any){window.alert(e?.message||'Video upload failed')} finally{setUploading(false);} };
  const recordStart=()=>{ if(!streamRef.current||recording)return; try { const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||''; const rec=new MediaRecorder(streamRef.current,mime?{mimeType:mime}:undefined); chunksRef.current=[]; rec.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data)}; rec.onstop=()=>{const blob=new Blob(chunksRef.current,{type:rec.mimeType||'video/webm'}); const file=new File([blob],`pardais-${Date.now()}.webm`,{type:blob.type}); void uploadFile(file);}; rec.start(); recorderRef.current=rec; setRecording(true); } catch { setError('Video recording is not available on this device/browser.'); } };
  const recordStop=()=>{recorderRef.current?.stop();recorderRef.current=null;setRecording(false);};
  const toggleCam=()=>{const t=streamRef.current?.getVideoTracks()[0]; if(!t)return; const next=!camOn; t.enabled=next; setCamOn(next);};
@@ -250,13 +253,22 @@ function CreateScreen({ camera, setCamera, onClose, onGoLive }: any) {
  const flip=()=>{const next=facing==='user'?'environment':'user';setFacing(next);void startCamera(next);};
  const zoomIn=()=>setZoom(z=>z>=2?1:z+0.5);
  const filterStyle=effect?{filter:'contrast(1.08) saturate(1.22) brightness(1.04)',transform:`scaleX(${facing==='user'?-1:1}) scale(${zoom})`}:{transform:`scaleX(${facing==='user'?-1:1}) scale(${zoom})`};
- return <main className='camera-screen'><div className='camera-preview'>
-   <button className='camera-close' onClick={onClose}><X/></button><div className='camera-mode'><Palette/> Normal</div><button className='moon' onClick={()=>{}} aria-label='Night mode'>🌙</button>
-   <video ref={videoRef} muted playsInline className='capture-preview' style={filterStyle}/>{!camOn&&<div className='camera-off-preview'><VideoOff/><span>Camera Off</span></div>}{error&&<div className='camera-error'>{error}</div>}
-   <div className='camera-side'><button onClick={flip}><span>↻</span><small>Flip</small></button><button onClick={()=>setEffect(v=>!v)}><Sparkles/><small>{effect?'On':'Off'}</small></button><button onClick={zoomIn}><b>{zoom}x</b><small>Zoom</small></button></div>
-   <div className='camera-bottom'><button onClick={()=>fileRef.current?.click()} disabled={uploading}><ImageIcon/><small>{uploading?'Uploading…':'Gallery'}</small></button><div className='shutter-wrap'><button className={`shutter ${recording?'recording':''}`} onPointerDown={recordStart} onPointerUp={recordStop} onPointerCancel={recordStop} onClick={()=>{if(!recording)recordStart()}} aria-label='Record video'/><small>{recording?'Recording…':'Tap for Photo · Hold for Video'}</small></div><button onClick={toggleCam}><VideoOff/><small>{camOn?'Camera':'Off'}</small></button></div>
-   <input ref={fileRef} type='file' accept='video/*' hidden onChange={e=>{const f=e.target.files?.[0];if(f)void uploadFile(f);e.currentTarget.value=''}}/>
-   <div className='capture-live-controls'><button className={micOn?'control-active':'cam-off-active'} onClick={toggleMic}>{micOn?<Mic/>:<MicOff/>}<span>{micOn?'Mic':'Muted'}</span></button><button className={camOn?'control-active':'cam-off-active'} onClick={toggleCam}>{camOn?<Camera/>:<VideoOff/>}<span>{camOn?'Camera':'Off'}</span></button><button onClick={flip}><span>↻</span><span>Flip</span></button><button onClick={()=>void onGoLive({camOff:!camOn,muted:!micOn,facing})}><Zap/><span>Go Live</span></button></div>
+ return <main className={`camera-screen ${isLive?'go-live-screen':'upload-video-screen'}`}><div className='camera-preview'>
+   <button className='camera-close' onClick={onClose}><X/></button>
+   <div className='camera-mode'><Palette/> {isLive?'Ready':'Normal'}</div>
+   <button className='moon' onClick={()=>{}} aria-label='Night mode'>🌙</button>
+   <video ref={videoRef} muted playsInline className='capture-preview' style={filterStyle}/>{!camOn&&<div className='camera-off-preview'><VideoOff/><span>Camera is off</span></div>}{error&&<div className='camera-error'>{error}</div>}
+   {isLive ? <div className='live-reference-controls'>
+      <button onClick={flip}><span className='control-symbol'>↻</span><small>Flip</small></button>
+      <button onClick={()=>setEffect(v=>!v)}><Sparkles/><small>Beauty</small></button>
+      <button onClick={toggleMic}><Mic/><small>{micOn?'Mute':'Unmute'}</small></button>
+      <button className={camOn?'':'live-cam-off'} onClick={toggleCam}>{camOn?<Camera/>:<VideoOff/>}<small>{camOn?'Cam':'Cam Off'}</small></button>
+   </div> : <>
+      <div className='camera-side'><button onClick={flip}><span>↻</span><small>Flip</small></button><button onClick={()=>setEffect(v=>!v)}><Sparkles/><small>{effect?'On':'Off'}</small></button><button onClick={toggleCam}><VideoOff/><small>{camOn?'1x':'Off'}</small></button><button onClick={zoomIn}><b>{zoom}x</b><small>Zoom</small></button></div>
+      <div className='camera-bottom'><button onClick={()=>fileRef.current?.click()} disabled={uploading}><ImageIcon/><small>{uploading?'Uploading…':'Gallery'}</small></button><div className='shutter-wrap'><button className={`shutter ${recording?'recording':''}`} onPointerDown={recordStart} onPointerUp={recordStop} onPointerCancel={recordStop} aria-label='Record video'/><small>{recording?'Recording…':'Tap for Photo · Hold for Video'}</small></div><button onClick={()=>setEffect(v=>!v)}><Palette/><small>Effects</small></button></div>
+      <input ref={fileRef} type='file' accept='video/*' hidden onChange={e=>{const f=e.target.files?.[0];if(f)void uploadFile(f);e.currentTarget.value=''}}/>
+   </>}
+   {isLive && <button className='go-live-reference-button' onClick={()=>void onGoLive({camOff:!camOn,muted:!micOn,facing})}><Zap/> Go Live</button>}
  </div></main>;
 }
 
@@ -280,7 +292,7 @@ function ProfileScreen({ onSettings, onEdit, onFollowers, onShare, onLevel, prof
     <div className="profile-tabs"><button className={profileTab === 'Public' ? 'selected' : ''} onClick={() => setProfileTab('Public')}><Globe2 /> Public</button><button className={profileTab === 'Private' ? 'selected' : ''} onClick={() => setProfileTab('Private')}>♧ Private</button><button className={profileTab === 'Saved' ? 'selected' : ''} onClick={() => setProfileTab('Saved')}><Bookmark /> Saved</button></div><ProfileVideoArea mode={profileTab} /></main>;
 }
 
-function ProfileVideoArea({ mode }: { mode: 'Public' | 'Private' | 'Saved' }) { const [videos,setVideos]=useState<any[]>([]); const uid=auth.currentUser?.uid||''; useEffect(()=>{void api.get('/api/reels').then(r=>setVideos((r.data?.items||[]).filter((x:any)=>mode==='Public'?x.userId===uid:mode==='Private'?x.userId===uid&&x.status==='private':false))).catch(()=>setVideos([]))},[mode,uid]); return <div className='profile-video-area'><div className='video-area-title'>{mode==='Public'?'Public Videos':mode==='Private'?'Private Videos':'Saved Reels'}</div>{videos.length?<div className='video-grid'>{videos.map(v=><video key={v.id} className='video-tile' src={v.mediaUrl} controls playsInline/> )}</div>:<div className='empty-state'><Video/><b>No {mode.toLowerCase()} videos</b><span>Uploaded production videos will appear here.</span></div>}</div>; }
+function ProfileVideoArea({ mode }: { mode: 'Public' | 'Private' | 'Saved' }) { const [videos,setVideos]=useState<any[]>([]); const uid=auth.currentUser?.uid||''; useEffect(()=>{void api.get('/api/reels').then(r=>setVideos((r.data?.items||[]).filter((x:any)=>mode==='Public'?x.userId===uid:mode==='Private'?x.userId===uid&&x.status==='private':false))).catch(()=>setVideos([]))},[mode,uid]); return <div className='profile-video-area'>{videos.length?<div className='video-grid'>{videos.map(v=><div key={v.id} className='video-tile'><video src={v.mediaUrl} muted playsInline preload='metadata'/><div className='video-play-overlay'><Video/><span>{v.viewsCount||v.views||0}</span></div></div>)}</div>:<div className='empty-state'><Video/><b>No {mode.toLowerCase()} videos</b><span>Uploaded production videos will appear here.</span></div>}</div>; }
 
 function FindFriendsPage({ onClose }: { onClose: () => void }) { const [query,setQuery]=useState(''); const [items,setItems]=useState<any[]>([]); const [loading,setLoading]=useState(false); useEffect(()=>{if(!query.trim()){setItems([]);return}setLoading(true);void api.get(`/api/users/search?q=${encodeURIComponent(query.trim())}`).then(r=>setItems(r.data?.items||[])).catch(()=>setItems([])).finally(()=>setLoading(false))},[query]); return <main className='full-dark-page find-friends-page'><header className='simple-page-head'><button onClick={onClose}><ChevronLeft/></button><h1>Find Friends</h1><span/></header><div className='friend-search'><Search/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder='Search username...'/></div>{loading?<div className='empty-state'>Searching…</div>:items.length?<div className='friend-list'>{items.map(u=><div className='friend-row' key={u.id}><span className='friend-avatar'>{u.avatar?'':'P'}</span><div className='friend-info'><b>{u.name}</b><small>{u.username}</small></div></div>)}</div>:<div className='empty-state'><Users/><b>{query?'No users found':'Search real users'}</b><span>Only registered Pardais accounts appear here.</span></div>}</main>; }
 
