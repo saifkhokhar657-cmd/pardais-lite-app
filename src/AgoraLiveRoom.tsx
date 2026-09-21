@@ -23,6 +23,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [endConfirmOpen, setEndConfirmOpen] = useState(false);
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
   const hostId = room.host?.username || room.host?.id || room.hostId || '1000259813';
@@ -86,6 +87,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     const track = micRef.current; if (!track || !clientRef.current) return;
     const next = !micOn; await track.setEnabled(next); setMicOn(next);
   };
+
   const toggleCamera = async () => {
     if (!clientRef.current || !room.isHost) return;
     if (!camRef.current) {
@@ -101,19 +103,24 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     setCameraOn(next);
     if (next && localVideoRef.current) camRef.current.play(localVideoRef.current);
   };
+
   const share = async () => {
     try { await navigator.share?.({ title: 'Pardais Lite Live', text: room.title || 'Join my live stream', url: window.location.href }); } catch {}
   };
+
   const submitComment = () => {
     const value = comment.trim();
     if (!value) return;
     setComments(v => [...v.slice(-2), value]);
     setComment('');
   };
+
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  const endBroadcast = () => { setEndConfirmOpen(false); onClose(); };
 
   return <div className="solo-live reference-solo-live">
     <div ref={room.isHost ? localVideoRef : remoteVideoRef} className="solo-live-video" />
+    {((room.isHost && !cameraOn) || (!room.isHost && !connected)) && <div className="solo-live-background" style={hostAvatar ? { backgroundImage: `url(${hostAvatar})` } : undefined}><div className="solo-live-background-shade" /></div>}
     <div className="solo-live-shade" />
 
     <header className="solo-live-top">
@@ -122,23 +129,23 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
           {hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{hostName.slice(0,1).toUpperCase()}</span>}
         </div>
         <div className="solo-host-text">
-          <div className="solo-name-row"><b>{hostName}</b><Verified className="solo-verified" fill="currentColor" /><button onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button></div>
-          <div className="solo-sub-row"><span>@{String(hostId).replace(/^@/, '')}</span><span className="solo-level">👑 {hostLevel}</span></div>
+          <div className="solo-name-row"><b>{hostName}</b><Verified className="solo-verified" fill="currentColor" />{!room.isHost && <button onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button>}</div>
+          <div className="solo-sub-row"><span>@{String(hostId).replace(/^@/, '')}</span><span className="solo-level">👑 Level {hostLevel}</span></div>
         </div>
       </div>
       <div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
-        <button onClick={onClose} aria-label="Close"><X /></button>
+        <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
       </div>
     </header>
 
     <div className="solo-stats">
-      <span><Eye /> {viewerCount + (room.isHost ? 1 : 0)}</span>
-      <span><Clock3 /> {formatTime(elapsed)}</span>
-      <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> {likes}</span>
+      <span><Eye /> <b>{viewerCount + (room.isHost ? 1 : 0)}</b><small>Views</small></span>
+      <span><Clock3 /> <b>{formatTime(elapsed)}</b><small>Time</small></span>
+      <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
-    {!cameraOn && room.isHost && <div className="solo-camera-off"><div className="solo-initial">{hostName.slice(0,1).toUpperCase()}</div><b>Camera is off</b><span>Your audio is live</span></div>}
+    {!cameraOn && room.isHost && <div className="solo-camera-off"><b>Camera is off</b><span>Your audio is live</span></div>}
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
     <div className="solo-comments">
@@ -157,10 +164,14 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       {room.isHost && <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()}>{cameraOn ? <Camera /> : <CameraOff />}</button>}
       {!room.isHost && <button className="solo-round" onClick={() => setLiked(v => { const n = !v; setLikes(x => Math.max(0, x + (n ? 1 : -1))); return n; })}><Heart fill={liked ? 'currentColor' : 'none'} /></button>}
       <button className="solo-round" onClick={() => setInviteOpen(v => !v)}><Sparkles /></button>
-      <button className="solo-round danger" onClick={onClose} aria-label="Leave"><PhoneOff /></button>
+      <button className="solo-round danger" onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Leave'}><PhoneOff /></button>
     </div>
 
     {inviteOpen && <div className="solo-invite-pop"><b><UsersRound /> Invite hosts</b><span>Available hosts will appear here.</span><button onClick={() => setInviteOpen(false)}>Close</button></div>}
     {error && <div className="solo-error">{error}</div>}
+
+    {room.isHost && endConfirmOpen && <div className="solo-end-modal" role="dialog" aria-modal="true" aria-labelledby="solo-end-title">
+      <div className="solo-end-card"><h3 id="solo-end-title">End Broadcast?</h3><p>Hey, do you want to end the broadcast?</p><div><button className="solo-end-no" onClick={() => setEndConfirmOpen(false)}>No</button><button className="solo-end-yes" onClick={endBroadcast}>Yes</button></div></div>
+    </div>}
   </div>;
 }
