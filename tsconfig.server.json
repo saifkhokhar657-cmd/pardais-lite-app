@@ -8,7 +8,10 @@
     "esModuleInterop": true,
     "outDir": "dist-server",
     "noEmit": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "noImplicitAny": false
   },
   "include": [
     "server.ts",
