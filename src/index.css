@@ -294,3 +294,61 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 @media(max-width:430px){
   .home-feed-screen .reel-author-block{bottom:400px!important}
 }
+
+/* Solo Live - reference UI */
+.reference-solo-live{position:fixed;inset:0;z-index:1000;background:#080812;color:#fff;overflow:hidden;font-family:inherit}
+.reference-solo-live .solo-live-video{position:absolute;inset:0;background:#080812}
+.reference-solo-live .solo-live-video video{width:100%;height:100%;object-fit:cover;display:block}
+.reference-solo-live .solo-live-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.58) 0%,rgba(0,0,0,.02) 27%,rgba(0,0,0,.05) 56%,rgba(0,0,0,.72) 100%);pointer-events:none}
+.reference-solo-live .solo-live-top{position:absolute;top:18px;left:22px;right:18px;display:flex;justify-content:space-between;align-items:flex-start;z-index:4}
+.reference-solo-live .solo-host-info{display:flex;align-items:center;min-width:0}
+.reference-solo-live .solo-avatar-wrap{width:58px;height:58px;border-radius:50%;padding:3px;background:linear-gradient(135deg,#7d4cff,#ffcc35);border:2px solid rgba(255,255,255,.8);display:grid;place-items:center;overflow:hidden;flex:none}
+.reference-solo-live .solo-avatar-wrap img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.reference-solo-live .solo-avatar-wrap span{width:100%;height:100%;display:grid;place-items:center;background:#26202d;border-radius:50%;font-size:25px;font-weight:800}
+.reference-solo-live .solo-host-text{margin-left:8px;min-width:0}
+.reference-solo-live .solo-name-row{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.reference-solo-live .solo-name-row b{font-size:19px;font-family:Georgia,serif;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.reference-solo-live .solo-name-row button{border:0;background:rgba(255,255,255,.16);color:#fff;border-radius:12px;padding:3px 8px;font-size:11px}
+.reference-solo-live .solo-verified{width:17px;height:17px;color:#2489ff}
+.reference-solo-live .solo-sub-row{display:flex;gap:8px;align-items:center;color:rgba(255,255,255,.78);font-size:13px;margin-top:3px}
+.reference-solo-live .solo-level{background:rgba(255,255,255,.18);border-radius:10px;padding:3px 8px}
+.reference-solo-live .solo-top-actions{display:flex;gap:8px}
+.reference-solo-live .solo-top-actions button{width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.32);color:#fff;display:grid;place-items:center}
+.reference-solo-live .solo-stats{position:absolute;top:132px;left:22px;display:flex;gap:5px;background:rgba(0,0,0,.46);padding:8px 10px;border-radius:11px;z-index:3}
+.reference-solo-live .solo-stats span{display:flex;align-items:center;gap:5px;font-size:14px;min-width:65px}
+.reference-solo-live .solo-stats svg{width:16px;height:16px}
+.reference-solo-live .solo-stats .liked{color:#ff3c3c}
+.reference-solo-live .solo-camera-off{position:absolute;inset:0;display:grid;place-content:center;text-align:center;z-index:1;pointer-events:none}
+.reference-solo-live .solo-initial{font-size:56px;margin-bottom:8px}
+.reference-solo-live .solo-camera-off b{font-size:25px}
+.reference-solo-live .solo-camera-off span{font-size:16px;color:rgba(255,255,255,.65);margin-top:4px}
+.reference-solo-live .solo-joining{position:absolute;inset:0;display:grid;place-items:center;z-index:5;font-size:18px}
+.reference-solo-live .solo-comments{position:absolute;left:28px;right:28px;bottom:132px;z-index:3;display:flex;flex-direction:column;gap:5px;pointer-events:none}
+.reference-solo-live .solo-comments div{font-size:13px;color:#fff;text-shadow:0 1px 3px #000}
+.reference-solo-live .solo-comments b{color:#ffd7f1}
+.reference-solo-live .solo-comment-bar{position:absolute;left:28px;right:128px;bottom:78px;height:58px;border:1px solid rgba(255,255,255,.32);background:rgba(0,0,0,.24);border-radius:30px;display:flex;align-items:center;padding:0 13px;gap:10px;z-index:4;backdrop-filter:blur(5px)}
+.reference-solo-live .solo-comment-bar>svg{width:22px;color:rgba(255,255,255,.72);flex:none}
+.reference-solo-live .solo-comment-bar input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#fff;font-size:17px}
+.reference-solo-live .solo-comment-bar input::placeholder{color:rgba(255,255,255,.62)}
+.reference-solo-live .solo-comment-bar button{width:42px;height:42px;border:0;background:rgba(255,255,255,.13);color:#fff;border-radius:50%;display:grid;place-items:center}
+.reference-solo-live .solo-bottom-actions{position:absolute;left:28px;right:20px;bottom:16px;display:flex;align-items:center;gap:12px;z-index:4}
+.reference-solo-live .solo-invite{height:62px;padding:0 24px;border:0;border-radius:31px;background:linear-gradient(90deg,#9b2cff,#b25cff);color:#fff;display:flex;align-items:center;gap:10px;font-size:20px;flex:none}
+.reference-solo-live .solo-invite svg{width:25px;height:25px}
+.reference-solo-live .solo-round{width:62px;height:62px;border:1px solid rgba(255,255,255,.2);border-radius:50%;background:rgba(20,20,27,.7);color:#fff;display:grid;place-items:center;flex:none}
+.reference-solo-live .solo-round svg{width:25px;height:25px}
+.reference-solo-live .solo-round.danger{background:#e92f32;border-color:#e92f32}
+.reference-solo-live .solo-invite-pop{position:absolute;left:28px;right:28px;bottom:94px;background:rgba(18,18,25,.96);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px;z-index:10;display:flex;flex-direction:column;gap:8px}
+.reference-solo-live .solo-invite-pop b{display:flex;gap:7px;align-items:center;font-size:17px}
+.reference-solo-live .solo-invite-pop span{color:rgba(255,255,255,.65);font-size:13px}
+.reference-solo-live .solo-invite-pop button{align-self:flex-end;border:0;border-radius:10px;padding:8px 14px;background:#9b2cff;color:#fff}
+.reference-solo-live .solo-error{position:absolute;left:18px;right:18px;bottom:160px;background:rgba(180,30,45,.92);padding:12px;border-radius:12px;z-index:12;font-size:13px}
+@media(max-width:430px){
+ .reference-solo-live .solo-live-top{left:18px;right:14px;top:14px}
+ .reference-solo-live .solo-avatar-wrap{width:54px;height:54px}
+ .reference-solo-live .solo-name-row b{font-size:17px;max-width:180px}
+ .reference-solo-live .solo-stats{top:120px;left:18px}
+ .reference-solo-live .solo-comment-bar{left:22px;right:104px;bottom:80px;height:56px}
+ .reference-solo-live .solo-bottom-actions{left:20px;right:14px;gap:9px}
+ .reference-solo-live .solo-invite{height:58px;padding:0 18px;font-size:18px}
+ .reference-solo-live .solo-round{width:58px;height:58px}
+}
