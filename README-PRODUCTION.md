@@ -84,7 +84,7 @@ Also set:
 After adding/updating variables, deploy the staged changes. Railway variables are injected into the running service as environment variables.
 
 ## Firebase Web config
-The browser Firebase SDK uses only the VITE_FIREBASE_* variables at build time. No hardcoded fallback API key is used.
+The browser Firebase SDK reads the public Firebase Web config from `/firebase-config.js` at request time when the app is served by Railway. This avoids the Vite build-time environment-variable issue. The same `VITE_FIREBASE_*` variables can still be supplied for local Vite builds. No Firebase service-account secret is exposed to the browser.
 
 
 ## V12 startup fix

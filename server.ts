@@ -28,6 +28,26 @@ if (process.env.NODE_ENV === 'production') {
   app.get('/register', sendSpa);
 }
 
+// Public Firebase Web configuration for the browser. These values are not
+// service-account secrets; Firebase Web config is designed to be client-visible.
+// Serving it at request time avoids the Vite/Railway build-time environment
+// variable problem that previously caused the splash-screen Firebase error.
+app.get('/firebase-config.js', (_req, res) => {
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || '',
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'pardais-lite-production.firebaseapp.com',
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'pardais-lite-production',
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'pardais-lite-production.firebasestorage.app',
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '233413127932',
+    appId: process.env.VITE_FIREBASE_APP_ID || '1:233413127932:web:d6802f84a3545de873179',
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-ZSW29BYVR',
+  };
+  res
+    .type('application/javascript')
+    .set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    .send(`window.__PARDAIS_FIREBASE_CONFIG__=${JSON.stringify(config)};`);
+});
+
 app.get('/api/_healthcheck', (_req, res) => res.json({ message: 'Success' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', time: now() }));
 app.get('/api/config', (_req, res) => res.json({

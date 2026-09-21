@@ -1,14 +1,23 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
+/**
+ * Firebase Web config is intentionally loaded at runtime when the app is served
+ * by Railway. Vite bakes import.meta.env into the JS bundle at build time, so
+ * changing Railway variables after a static build used to leave the browser
+ * with an empty Firebase config. /firebase-config.js fixes that by exposing the
+ * public Firebase Web config at request time.
+ */
+const runtimeConfig = window.__PARDAIS_FIREBASE_CONFIG__ || {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: runtimeConfig.apiKey || import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: runtimeConfig.authDomain || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: runtimeConfig.projectId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: runtimeConfig.storageBucket || import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: runtimeConfig.messagingSenderId || import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: runtimeConfig.appId || import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: runtimeConfig.measurementId || import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const requiredFirebaseConfig: Array<[string, unknown]> = [
@@ -25,7 +34,10 @@ const missingFirebaseConfig = requiredFirebaseConfig
   .map(([name]) => name);
 
 if (missingFirebaseConfig.length) {
-  throw new Error(`Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}. Add these VITE_* variables in Railway and redeploy.`);
+  throw new Error(
+    `Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}. ` +
+    'Set the Firebase Web variables in Railway and redeploy.'
+  );
 }
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
