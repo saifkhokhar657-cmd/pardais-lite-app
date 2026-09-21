@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@appdeploy/client';
+import { api } from './lib/api';
 import {
   Bell, Ban, Bookmark, CalendarDays, Camera, ChevronLeft, ChevronRight, CircleHelp,
   Copy, Edit3, Gift, Globe2, Heart, Home, Image as ImageIcon, Languages, Link2,
