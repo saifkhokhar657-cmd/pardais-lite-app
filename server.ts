@@ -78,10 +78,29 @@ const asyncRoute = (fn: (req: AuthenticatedRequest, res: express.Response) => Pr
 
 app.post('/api/auth/register', asyncRoute(async (req, res) => {
   const uid = req.user!.uid;
-  const user = await upsertUser(uid, { email: req.user!.email ?? null, name: String(req.body?.name || req.user!.name || 'Pardais User'), avatar: req.body?.avatar ?? req.user!.picture ?? null });
-  res.status(201).json({ success: true, user });
+  const requestedUsername = String(req.body?.username || '').trim().toLowerCase();
+  if (requestedUsername && !/^@[a-z0-9_]{3,20}$/.test(requestedUsername)) return res.status(400).json({ error: 'Username must start with @ and contain 3-20 letters, numbers or underscores.' });
+  if (requestedUsername) {
+    const same = await list('profiles', { username: requestedUsername }, 5);
+    if (same.some((x: any) => x.userId !== uid)) return res.status(409).json({ error: 'Username is already taken.' });
+  }
+  const user = await upsertUser(uid, { email: req.user!.email ?? null, name: String(req.body?.name || req.user!.name || 'Pardais User'), avatar: req.body?.avatar ?? req.user!.picture ?? null, username: requestedUsername || undefined });
+  if (requestedUsername) await update('users', uid, { username: requestedUsername });
+  const wallet = await get('wallets', uid); if (!wallet) await update('wallets', uid, { userId: uid, coins: 0, balance: 0 });
+  res.status(201).json({ success: true, user, onboardingComplete: Boolean((await get('profiles', uid))?.username) });
 }));
 
+app.get('/api/auth/me', asyncRoute(async (req, res) => {
+  const uid = req.user!.uid;
+  const user = await upsertUser(uid, { email: req.user!.email ?? null, name: req.user!.name || 'Pardais User', avatar: req.user!.picture ?? null });
+  const profile: any = await get('profiles', uid);
+  const followers = await list('follows', { followingId: uid }, 5000);
+  const following = await list('follows', { followerId: uid }, 5000);
+  const likes = await list('reel_likes', { userId: uid }, 5000);
+  return res.json({ success: true, user, profile, onboardingComplete: Boolean(profile?.username), stats: { followers: followers.length, following: following.length, likes: likes.length } });
+}));
+
+app.get('/api/users/search', asyncRoute(async (req,res)=>{ const q=String(req.query.q||'').trim().toLowerCase(); if(!q) return res.json({success:true,items:[]}); const profiles=await list('profiles',{},500); const matched=profiles.filter((p:any)=>String(p.username||'').toLowerCase().includes(q)||`${p.firstName||''} ${p.lastName||''}`.toLowerCase().includes(q)).slice(0,30); const items=await Promise.all(matched.map(async(p:any)=>{const u:any=await get('users',String(p.userId));return {id:p.userId,name:p.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User'),username:p.username||'',avatar:p.avatar||u?.avatar||''};})); return res.json({success:true,items}); }));
 app.get('/api/users/:id', asyncRoute(async (req, res) => {
   const user = await get('users', String(req.params.id));
   if (!user) return res.status(404).json({ error: 'user not found' });
@@ -93,9 +112,13 @@ app.get('/api/profile/:userId', asyncRoute(async (req, res) => {
   return res.json({ success: true, profile: profile ?? { userId: String(req.params.userId), name: 'Pardais User', bio: '' } });
 }));
 app.put('/api/profile/:userId', asyncRoute(async (req, res) => {
-  assertSelf(req, String(req.params.userId));
-  const profile = await update('profiles', String(req.params.userId), { ...req.body, userId: String(req.params.userId) });
-  await update('users', String(req.params.userId), { name: `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim() || 'Pardais User', avatar: req.body.avatar ?? null });
+  const uid = String(req.params.userId); assertSelf(req, uid);
+  const existing: any = await get('profiles', uid);
+  if (req.body?.username && existing?.username && String(req.body.username).trim().toLowerCase() !== String(existing.username).toLowerCase()) return res.status(400).json({ error: 'Username cannot be changed after registration.' });
+  const patch = { ...req.body, userId: uid };
+  if (existing?.username) patch.username = existing.username;
+  const profile = await update('profiles', uid, patch);
+  await update('users', uid, { name: `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim() || 'Pardais User', avatar: req.body.avatar ?? existing?.avatar ?? null, username: existing?.username ?? patch.username ?? null });
   return res.json({ success: true, profile });
 }));
 
@@ -151,8 +174,33 @@ app.get('/api/followers/:userId', asyncRoute(async (req, res) => { const rows: a
 app.get('/api/following/:userId', asyncRoute(async (req, res) => { const rows: any[] = await list('follows', { followerId: String(req.params.userId) }); const items = await directory(rows.map(x => String(x.followingId))); return res.json({ success: true, items, count: items.length }); }));
 app.get('/api/friends/:userId', asyncRoute(async (req, res) => { const out: any[] = await list('follows', { followerId: String(req.params.userId) }); const incoming: any[] = await list('follows', { followingId: String(req.params.userId) }); const incomingIds = new Set(incoming.map(x => String(x.followerId))); const items = await directory(out.map(x => String(x.followingId)).filter(x => incomingIds.has(x))); return res.json({ success: true, items, count: items.length }); }));
 
-app.get('/api/feed', asyncRoute(async (_req, res) => res.json({ success: true, items: await list('feed', {}, 30) })));
-app.get('/api/reels', asyncRoute(async (_req, res) => res.json({ success: true, items: await list('reels', {}, 30) })));
+app.get('/api/feed', asyncRoute(async (req, res) => {
+  const rows: any[] = await list('reels', {}, 100);
+  const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,30).map(async r => {
+    const author: any = await get('profiles', String(r.userId));
+    const likes = await list('reel_likes', { reelId: r.id }, 5000);
+    return { ...r, likesCount: likes.length, author: { name: author?.firstName ? `${author.firstName} ${author.lastName||''}`.trim() : 'Pardais User', username: author?.username || '', avatar: author?.avatar || '' } };
+  }));
+  return res.json({ success: true, items });
+}));
+app.get('/api/reels', asyncRoute(async (req, res) => {
+  const rows: any[] = await list('reels', {}, 100);
+  const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,30).map(async r => { const likes=await list('reel_likes',{reelId:r.id},5000); return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid) }; }));
+  return res.json({ success: true, items });
+}));
+app.post('/api/reels', asyncRoute(async (req,res) => {
+  const mediaUrl=String(req.body?.mediaUrl||'').trim(), key=String(req.body?.key||'').trim(), caption=String(req.body?.caption||'').trim();
+  if (!mediaUrl || !key || !key.startsWith(`users/${req.user!.uid}/`)) return res.status(400).json({ error:'Valid uploaded media is required.' });
+  const id=await add('reels',{userId:req.user!.uid,mediaUrl,key,caption,status:'published',likesCount:0});
+  return res.status(201).json({success:true,reel:{id,userId:req.user!.uid,mediaUrl,key,caption,status:'published',likesCount:0}});
+}));
+app.post('/api/reels/:id/like', asyncRoute(async(req,res)=>{
+  const reelId=String(req.params.id), userId=req.user!.uid, existing=await list('reel_likes',{reelId,userId},5);
+  if(existing.length){ for(const x of existing) await remove('reel_likes',x.id); } else await add('reel_likes',{reelId,userId});
+  const count=(await list('reel_likes',{reelId},5000)).length;
+  return res.json({success:true,liked:!existing.length,likesCount:count});
+}));
+app.get('/api/profile/:userId/stats', asyncRoute(async(req,res)=>{ const uid=String(req.params.userId); const followers=await list('follows',{followingId:uid},5000), following=await list('follows',{followerId:uid},5000), reels=await list('reels',{userId:uid},5000); let likes=0; for(const r of reels) likes += (await list('reel_likes',{reelId:r.id},5000)).length; return res.json({success:true,stats:{followers:followers.length,following:following.length,likes}}); }));
 
 app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
   const rooms = await list('live_rooms', { status: 'live' }, 50);
@@ -221,8 +269,11 @@ app.post('/api/moderation', asyncRoute(async(req,res)=>{const action=String(req.
 app.post('/api/invites', asyncRoute(async(req,res)=>{const id=await add('invites',{...req.body,fromUserId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
 app.post('/api/invites/:id/respond', asyncRoute(async(req,res)=>{const invite:any=await get('invites',String(req.params.id));if(!invite)return res.status(404).json({error:'invite not found'});if(invite.toUserId!==req.user!.uid)return res.status(403).json({error:'not your invite'});const status=String(req.body?.status||'');if(!['accepted','rejected','cancelled'].includes(status))return res.status(400).json({error:'invalid invite response'});await update('invites',String(req.params.id),{status});return res.json({success:true,inviteId:String(req.params.id),status});}));
 app.post('/api/pk/invites', asyncRoute(async(req,res)=>{const id=await add('pk_invites',{...req.body,fromUserId:req.user!.uid,type:'pk',status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
+app.get('/api/notifications/:userId', asyncRoute(async(req,res)=>{ assertSelf(req,String(req.params.userId)); return res.json({success:true,items:await list('notifications',{userId:String(req.params.userId)},100)}); }));
 app.post('/api/notifications', asyncRoute(async(req,res)=>{const id=await add('notifications',{...req.body,createdAt:now(),read:false});return res.status(201).json({success:true,id});}));
-app.post('/api/messages', asyncRoute(async(req,res)=>{const id=await add('messages',{...req.body,senderId:req.user!.uid});return res.status(201).json({success:true,messageId:id});}));
+app.get('/api/messages/:peerId', asyncRoute(async(req,res)=>{ const me=req.user!.uid, peer=String(req.params.peerId); const sent=await list('messages',{senderId:me,receiverId:peer},500), received=await list('messages',{senderId:peer,receiverId:me},500); const items=[...sent,...received].sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt))); return res.json({success:true,items}); }));
+app.get('/api/chats', asyncRoute(async(req,res)=>{ const rows=await list('messages',{},5000); const mine=rows.filter((x:any)=>x.senderId===req.user!.uid||x.receiverId===req.user!.uid); const peerIds=[...new Set(mine.map((x:any)=>x.senderId===req.user!.uid?x.receiverId:x.senderId).filter(Boolean))]; const items=await Promise.all(peerIds.map(async peerId=>{const last=mine.filter((x:any)=>x.senderId===peerId||x.receiverId===peerId).sort((a:any,b:any)=>String(b.createdAt).localeCompare(String(a.createdAt)))[0]; const u:any=await get('users',String(peerId)); const p:any=await get('profiles',String(peerId)); return {userId:peerId,name:p?.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User'),username:p?.username||'',avatar:p?.avatar||u?.avatar||'',lastMessage:last?.text||'',createdAt:last?.createdAt||''};})); return res.json({success:true,items}); }));
+app.post('/api/messages', asyncRoute(async(req,res)=>{const receiverId=String(req.body?.receiverId||''); const text=String(req.body?.text||'').trim(); if(!receiverId||!text)return res.status(400).json({error:'receiverId and text are required'}); const id=await add('messages',{senderId:req.user!.uid,receiverId,text}); return res.status(201).json({success:true,messageId:id});}));
 app.delete('/api/messages/:userId/:peerId', asyncRoute(async(req,res)=>{assertSelf(req,String(req.params.userId));const rows=await list('messages',{senderId:String(req.params.userId),receiverId:String(req.params.peerId)},1000);for(const x of rows)await remove('messages',x.id);return res.json({success:true,deleted:rows.length});}));
 app.post('/api/wallet/recharge-intent', asyncRoute(async(req,res)=>{const id=await add('wallet_recharge_intents',{...req.body,userId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,intentId:id,status:'pending'});}));
 app.post('/api/actions', asyncRoute(async(req,res)=>{const id=await add('app_actions',{...req.body,userId:req.user!.uid});return res.status(201).json({success:true,actionId:id});}));

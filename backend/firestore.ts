@@ -46,6 +46,10 @@ export async function upsertUser(uid: string, data: Record<string, unknown>) {
   await ref.set(base, { merge: true });
   const profileRef = db.collection('profiles').doc(uid);
   const profile = await profileRef.get();
-  if (!profile.exists) await profileRef.set({ userId: uid, firstName: data.name ?? 'Pardais', lastName: '', bio: '', username: data.username ?? null, avatar: data.avatar ?? null, createdAt: now(), updatedAt: now() });
+  if (!profile.exists) {
+    await profileRef.set({ userId: uid, firstName: data.name ?? 'Pardais', lastName: '', bio: '', username: data.username ?? null, avatar: data.avatar ?? null, createdAt: now(), updatedAt: now() });
+  } else if (data.username && !profile.data()?.username) {
+    await profileRef.set({ username: data.username, updatedAt: now() }, { merge: true });
+  }
   return get('users', uid);
 }
