@@ -182,9 +182,10 @@ app.get('/api/feed', asyncRoute(async (req, res) => {
   const items = await Promise.all(visible.map(async r => {
     const author: any = await get('profiles', String(r.userId));
     const likes = await list('reel_likes', { reelId: r.id }, 5000);
+    const views = await list('reel_views', { reelId: r.id }, 50000);
     const saved = await list('saved_reels', { reelId: r.id, userId: req.user!.uid }, 5);
     const comments = await list('comments', { targetId: r.id }, 5000);
-    return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe: saved.length>0, commentsCount: comments.length,
+    return { ...r, likesCount: likes.length, viewsCount: views.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe: saved.length>0, commentsCount: comments.length,
       author: { name: author?.firstName ? `${author.firstName} ${author.lastName||''}`.trim() : 'Pardais User', username: author?.username || '', avatar: author?.avatar || '' } };
   }));
   return res.json({ success: true, items });
@@ -193,8 +194,8 @@ app.get('/api/reels', asyncRoute(async (req, res) => {
   const mine = String(req.query?.mine || '') === '1';
   const rows: any[] = await list('reels', mine ? { userId: req.user!.uid } : {}, 200);
   const items = await Promise.all(rows.filter(x => x.status !== 'deleted').sort((a,b) => String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,100).map(async r => {
-    const likes=await list('reel_likes',{reelId:r.id},5000); const saved=await list('saved_reels',{reelId:r.id,userId:req.user!.uid},5);
-    return { ...r, likesCount: likes.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe:saved.length>0 };
+    const likes=await list('reel_likes',{reelId:r.id},5000); const views=await list('reel_views',{reelId:r.id},50000); const saved=await list('saved_reels',{reelId:r.id,userId:req.user!.uid},5);
+    return { ...r, likesCount: likes.length, viewsCount: views.length, likedByMe: likes.some((x:any)=>x.userId===req.user!.uid), savedByMe:saved.length>0 };
   }));
   return res.json({ success: true, items });
 }));
@@ -213,6 +214,7 @@ app.patch('/api/reels/:id', asyncRoute(async(req,res)=>{
 }));
 app.delete('/api/reels/:id', asyncRoute(async(req,res)=>{const id=String(req.params.id),reel:any=await get('reels',id);if(!reel)return res.status(404).json({error:'reel not found'});assertSelf(req,String(reel.userId));await update('reels',id,{status:'deleted',deletedAt:now()});try{if(reel.key)await deleteObject(reel.key)}catch{}return res.json({success:true});}));
 app.post('/api/reels/:id/save', asyncRoute(async(req,res)=>{const reelId=String(req.params.id),userId=req.user!.uid;const existing=await list('saved_reels',{reelId,userId},5);if(existing.length){for(const x of existing)await remove('saved_reels',x.id)}else await add('saved_reels',{reelId,userId});return res.json({success:true,saved:!existing.length});}));
+app.post('/api/reels/:id/view', asyncRoute(async(req,res)=>{ const reelId=String(req.params.id), userId=req.user!.uid; const reel=await get('reels',reelId); if(!reel||reel.status!=='published') return res.status(404).json({error:'reel not found'}); const existing=await list('reel_views',{reelId,userId},2); if(!existing.length) await add('reel_views',{reelId,userId}); const viewsCount=(await list('reel_views',{reelId},50000)).length; return res.json({success:true,viewsCount}); }));
 app.post('/api/reels/:id/like', asyncRoute(async(req,res)=>{
   const reelId=String(req.params.id), userId=req.user!.uid, existing=await list('reel_likes',{reelId,userId},5);
   if(existing.length){ for(const x of existing) await remove('reel_likes',x.id); } else await add('reel_likes',{reelId,userId});
