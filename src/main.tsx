@@ -31,8 +31,7 @@ function BootScreen({ error }: { error?: string }) {
 
 async function loadFirebaseRuntimeConfig() {
   if ((window as any).__PARDAIS_FIREBASE_CONFIG__) return;
-  const apiBase = 'https://api.pardaislite.soulverseapps.com';
-  const response = await fetch(`${apiBase}/firebase-config.json`, { cache: 'no-store' });
+  const response = await fetch(`${window.location.origin}/firebase-config.json`, { cache: 'no-store' });
   if (!response.ok) throw new Error(`Firebase runtime config request failed (${response.status})`);
   const config = await response.json();
   (window as any).__PARDAIS_FIREBASE_CONFIG__ = config;

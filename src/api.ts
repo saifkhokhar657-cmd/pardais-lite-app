@@ -1,6 +1,6 @@
 import { auth } from './firebase';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.pardaislite.soulverseapps.com';
+const API_BASE = (import.meta.env.DEV ? (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080') : window.location.origin).replace(/\/$/, '');
 
 async function headers(contentType = false) {
   const h: Record<string, string> = { Accept: 'application/json' };

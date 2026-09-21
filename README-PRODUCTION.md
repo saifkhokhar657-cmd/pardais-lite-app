@@ -29,7 +29,7 @@ Set these in Railway; never commit them:
 
 Frontend build variables:
 
-- `VITE_API_BASE_URL=https://api.pardaislite.soulverseapps.com`
+- `VITE_API_BASE_URL` — optional for local/dev; production uses the same-origin `/api` endpoint automatically.
 - `VITE_FIREBASE_API_KEY`
 - `VITE_FIREBASE_AUTH_DOMAIN=pardais-lite-production.firebaseapp.com`
 - `VITE_FIREBASE_PROJECT_ID=pardais-lite-production`
