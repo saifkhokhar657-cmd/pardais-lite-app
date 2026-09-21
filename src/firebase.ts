@@ -1,14 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
-/**
- * Firebase Web config is intentionally loaded at runtime when the app is served
- * by Railway. Vite bakes import.meta.env into the JS bundle at build time, so
- * changing Railway variables after a static build used to leave the browser
- * with an empty Firebase config. /firebase-config.js fixes that by exposing the
- * public Firebase Web config at request time.
- */
-const runtimeConfig = window.__PARDAIS_FIREBASE_CONFIG__ || {};
+const runtimeConfig = (window as any).__PARDAIS_FIREBASE_CONFIG__ || {};
 
 const firebaseConfig = {
   apiKey: runtimeConfig.apiKey || import.meta.env.VITE_FIREBASE_API_KEY,
@@ -36,7 +29,7 @@ const missingFirebaseConfig = requiredFirebaseConfig
 if (missingFirebaseConfig.length) {
   throw new Error(
     `Firebase Web configuration is missing: ${missingFirebaseConfig.join(', ')}. ` +
-    'Set the Firebase Web variables in Railway and redeploy.'
+    'Firebase runtime configuration could not be loaded from the Pardais API.'
   );
 }
 

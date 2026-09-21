@@ -32,6 +32,19 @@ if (process.env.NODE_ENV === 'production') {
 // service-account secrets; Firebase Web config is designed to be client-visible.
 // Serving it at request time avoids the Vite/Railway build-time environment
 // variable problem that previously caused the splash-screen Firebase error.
+app.get('/firebase-config.json', (_req, res) => {
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || '',
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || '',
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: process.env.VITE_FIREBASE_APP_ID || '',
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || '',
+  };
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate').json(config);
+});
+
 app.get('/firebase-config.js', (_req, res) => {
   const config = {
     apiKey: process.env.VITE_FIREBASE_API_KEY || '',

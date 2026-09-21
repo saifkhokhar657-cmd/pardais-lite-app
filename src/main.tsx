@@ -29,13 +29,23 @@ function BootScreen({ error }: { error?: string }) {
   );
 }
 
+async function loadFirebaseRuntimeConfig() {
+  if ((window as any).__PARDAIS_FIREBASE_CONFIG__) return;
+  const apiBase = 'https://api.pardaislite.soulverseapps.com';
+  const response = await fetch(`${apiBase}/firebase-config.json`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Firebase runtime config request failed (${response.status})`);
+  const config = await response.json();
+  (window as any).__PARDAIS_FIREBASE_CONFIG__ = config;
+}
+
 function Bootstrap() {
   const [App, setApp] = useState<React.ComponentType | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
-    import('./App')
+    loadFirebaseRuntimeConfig()
+      .then(() => import('./App'))
       .then(mod => { if (active) setApp(() => mod.default); })
       .catch(err => {
         console.error('Pardais Lite bootstrap error', err);
