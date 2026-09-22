@@ -6,7 +6,7 @@ import { add, get, list, now, remove, update, upsertUser } from './backend/fires
 import { requireAuth, assertSelf, type AuthenticatedRequest } from './backend/auth.js';
 import { buildRtcToken, numericAgoraUid } from './backend/agora.js';
 import { createDownloadUrl, createUploadUrl, deleteObject, uploadObject } from './backend/r2.js';
-import { db, firebaseCredentialsConfigured } from './backend/firebase-admin.js';
+import { db, firebaseCredentialsConfigured, firebaseProjectId } from './backend/firebase-admin.js';
 import type { Transaction } from 'firebase-admin/firestore';
 
 const app = express();
@@ -70,10 +70,11 @@ app.get('/api/health', async (_req, res) => {
   }
   try {
     await db.collection('_system').doc('health').get();
-    return res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', firebase: 'ready', time: now() });
+    return res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', firebase: 'ready', projectId: firebaseProjectId, time: now() });
   } catch (error: any) {
     console.error('Health check database error:', error);
-    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase/Firestore is not reachable from the API server.', firebase: 'database-error', detail: process.env.NODE_ENV === 'production' ? undefined : String(error?.message || error), time: now() });
+    const code = String(error?.code || '').toUpperCase();
+    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase/Firestore is not reachable from the API server.', firebase: 'database-error', code: code || undefined, detail: process.env.NODE_ENV === 'production' ? undefined : String(error?.message || error), time: now() });
   }
 });
 app.get('/api/config', (_req, res) => res.json({
@@ -585,6 +586,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   else if (code.includes('UNAUTHENTICATED') || code.includes('INVALID_CREDENTIAL')) message = 'Firebase authentication credentials are invalid or expired.';
   else if (code.includes('FAILED_PRECONDITION')) message = 'Firestore configuration/index error. Check the Firebase project and Firestore setup.';
   else if (code.includes('UNAVAILABLE') || code.includes('DEADLINE_EXCEEDED')) message = 'Firebase/Firestore is temporarily unavailable. Please try again.';
+  else if (code.includes('NOT_FOUND')) message = 'Firebase project or Firestore database was not found. Check the project ID and Firestore database.';
   else if (!firebaseCredentialsConfigured) message = 'Firebase server credentials are not configured on the API server.';
   res.status(500).json({ error: message, code: code || undefined });
 });

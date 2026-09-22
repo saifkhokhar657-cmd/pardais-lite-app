@@ -8,25 +8,34 @@ function parseServiceAccount(raw: string) {
   return parsed;
 }
 
+function rawServiceAccount() {
+  const raw = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_ADMIN_JSON || '').trim();
+  if (raw) return parseServiceAccount(raw);
+  const b64 = (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || process.env.FIREBASE_SERVICE_ACCOUNT_BASE64_JSON || '').trim();
+  if (b64) return parseServiceAccount(Buffer.from(b64, 'base64').toString('utf8'));
+  return null;
+}
+
+// Prefer the project_id embedded in the service-account itself. This prevents
+// a stale/mismatched FIREBASE_PROJECT_ID Railway variable from sending the
+// Admin SDK to a different Firebase project after a redeploy.
+const serviceAccount = rawServiceAccount();
+export const firebaseProjectId = serviceAccount?.project_id?.trim() || process.env.FIREBASE_PROJECT_ID?.trim() || 'pardais-lite-production';
+
 function credentialConfig() {
   // Support the Railway variable names used by older deployments as well as
-  // the current JSON/base64 variables. This prevents a redeploy from silently
-  // losing Firestore access when the credential is stored as separate fields.
-  const raw = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_ADMIN_JSON || '').trim();
-  const b64 = (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || process.env.FIREBASE_SERVICE_ACCOUNT_BASE64_JSON || '').trim();
-  if (raw) return { credential: cert(parseServiceAccount(raw)) };
-  if (b64) return { credential: cert(parseServiceAccount(Buffer.from(b64, 'base64').toString('utf8'))) };
+  // the current JSON/base64 variables.
+  if (serviceAccount) return { credential: cert(serviceAccount) };
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.trim();
-  if (clientEmail && privateKey) return { credential: cert({ projectId, clientEmail, privateKey: privateKey.replace(/\\n/g, '\n') }) };
+  if (clientEmail && privateKey) return { credential: cert({ projectId: firebaseProjectId, clientEmail, privateKey: privateKey.replace(/\\n/g, '\n') }) };
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) return { credential: applicationDefault() };
   return {};
 }
 
-const projectId = process.env.FIREBASE_PROJECT_ID || 'pardais-lite-production';
 const app = getApps()[0] ?? initializeApp({
   ...credentialConfig(),
-  projectId,
+  projectId: firebaseProjectId,
 });
 
 export const firebaseCredentialsConfigured = Boolean(
