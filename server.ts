@@ -102,24 +102,43 @@ app.get('/api/auth/me', asyncRoute(async (req, res) => {
 
 app.get('/api/users/search', asyncRoute(async (req,res)=>{ const q=String(req.query.q||'').trim().toLowerCase(); if(!q) return res.json({success:true,items:[]}); const profiles=await list('profiles',{},500); const matched=profiles.filter((p:any)=>String(p.username||'').toLowerCase().includes(q)||`${p.firstName||''} ${p.lastName||''}`.toLowerCase().includes(q)).slice(0,30); const items=await Promise.all(matched.map(async(p:any)=>{const u:any=await get('users',String(p.userId));return {id:p.userId,name:p.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User'),username:p.username||'',avatar:p.avatar||u?.avatar||''};})); return res.json({success:true,items}); }));
 app.get('/api/users/:id', asyncRoute(async (req, res) => {
-  const user = await get('users', String(req.params.id));
+  const uid = String(req.params.id);
+  const user: any = await get('users', uid);
   if (!user) return res.status(404).json({ error: 'user not found' });
-  return res.json({ success: true, user });
+  const profile: any = await get('profiles', uid);
+  return res.json({ success: true, user: { ...user, bio: profile?.bio || user.bio || '', avatar: user.avatar || profile?.avatar || '', username: user.username || profile?.username || '', level: Number(user.level || profile?.level || 1) } });
 }));
 
 app.get('/api/profile/:userId', asyncRoute(async (req, res) => {
-  const profile = await get('profiles', String(req.params.userId));
-  return res.json({ success: true, profile: profile ?? { userId: String(req.params.userId), name: 'Pardais User', bio: '' } });
+  const uid = String(req.params.userId);
+  const profile: any = await get('profiles', uid);
+  const user: any = await get('users', uid);
+  const result: any = profile ?? { userId: uid, name: 'Pardais User', bio: '' };
+  if (!result.username && user?.username) result.username = user.username;
+  if (!result.avatar && user?.avatar) result.avatar = user.avatar;
+  if (!result.firstName && user?.name) { const parts=String(user.name).trim().split(/\s+/); result.firstName=parts.shift()||''; result.lastName=parts.join(' '); }
+  if (result.nameChangedAt) { const t=Date.parse(String(result.nameChangedAt)); if(Number.isFinite(t)) result.nameChangeLockedUntil=new Date(t+7*24*60*60*1000).toISOString(); }
+  return res.json({ success: true, profile: result });
 }));
 app.put('/api/profile/:userId', asyncRoute(async (req, res) => {
   const uid = String(req.params.userId); assertSelf(req, uid);
   const existing: any = await get('profiles', uid);
   if (req.body?.username && existing?.username && String(req.body.username).trim().toLowerCase() !== String(existing.username).toLowerCase()) return res.status(400).json({ error: 'Username cannot be changed after registration.' });
-  const patch = { ...req.body, userId: uid };
+  const currentName = `${existing?.firstName || ''} ${existing?.lastName || ''}`.trim() || String((await get('users', uid))?.name || '').trim();
+  const nextName = `${req.body?.firstName || ''} ${req.body?.lastName || ''}`.trim();
+  const nameChanged = Boolean(nextName && nextName !== currentName);
+  const lockedAt = existing?.nameChangedAt ? Date.parse(String(existing.nameChangedAt)) : NaN;
+  const lockedUntil = Number.isFinite(lockedAt) ? lockedAt + 7 * 24 * 60 * 60 * 1000 : 0;
+  if (nameChanged && lockedUntil && Date.now() < lockedUntil) return res.status(400).json({ error: `Name can be changed again after ${new Date(lockedUntil).toLocaleDateString()}.`, nameChangeLockedUntil: new Date(lockedUntil).toISOString() });
+  const patch: any = { ...req.body, userId: uid, updatedAt: now() };
   if (existing?.username) patch.username = existing.username;
+  if (nameChanged) patch.nameChangedAt = now();
+  delete patch.email; delete patch.age;
   const profile = await update('profiles', uid, patch);
-  await update('users', uid, { name: `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim() || 'Pardais User', avatar: req.body.avatar ?? existing?.avatar ?? null, username: existing?.username ?? patch.username ?? null });
-  return res.json({ success: true, profile });
+  await update('users', uid, { name: nextName || currentName || 'Pardais User', avatar: req.body.avatar ?? existing?.avatar ?? null, username: existing?.username ?? patch.username ?? null });
+  const responseLockedAt = nameChanged ? Date.now() : (Number.isFinite(lockedAt) ? lockedAt : 0);
+  const responseLockedUntil = responseLockedAt ? new Date(responseLockedAt + 7 * 24 * 60 * 60 * 1000).toISOString() : null;
+  return res.json({ success: true, profile, nameChangeLockedUntil: responseLockedUntil });
 }));
 
 app.get('/api/settings/:userId', asyncRoute(async (req, res) => {
@@ -261,7 +280,17 @@ app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
     if (!previous || stamp > previousStamp) latestByHost.set(hostKey, room);
   }
   const active = Array.from(latestByHost.values());
-  const enriched = await Promise.all(active.map(async (room: any) => ({ ...room, host: await buildLiveHost(String(room.hostId), String(room.id)) })));
+  const enriched = await Promise.all(active.map(async (room: any) => {
+    const members: any[] = await list('live_members', { roomId: String(room.id) }, 100);
+    const acceptedInvites: any[] = await list('invites', { roomId: String(room.id), status: 'accepted' }, 100);
+    const pkRows: any[] = await list('pk_matches', { hostId: String(room.hostId) }, 50);
+    const activePk = pkRows.some((m:any) => ['active','live','started','running','in_progress'].includes(String(m.status || '').toLowerCase()));
+    const hasGuest = members.some((m:any) => ['guest'].includes(String(m.role || '').toLowerCase())) || acceptedInvites.some((i:any) => String(i.type || '').toLowerCase() === 'guest');
+    const hasCohost = members.some((m:any) => ['cohost'].includes(String(m.role || '').toLowerCase())) || acceptedInvites.some((i:any) => String(i.type || '').toLowerCase() === 'cohost');
+    const displayMode = activePk ? 'PK' : hasGuest ? 'GUEST' : hasCohost ? 'ONE VS ONE' : 'SOLO';
+    const host = await buildLiveHost(String(room.hostId), String(room.id));
+    return { ...room, displayMode, host: { ...host, levelBadge: `Lv.${Number(host.level || 1)}` } };
+  }));
   return res.json({ success: true, rooms: enriched });
 }));
 app.post('/api/live/heartbeat', asyncRoute(async (req, res) => {
