@@ -104,13 +104,16 @@ app.get('/api/auth/me', asyncRoute(async (req, res) => {
 app.get('/api/users/search', asyncRoute(async (req,res)=>{
   const q=String(req.query.q||'').trim().toLowerCase();
   const profiles=await list('profiles',{},5000);
-  const matched=q
-    ? profiles.filter((p:any)=>String(p.username||'').toLowerCase().includes(q)||`${p.firstName||''} ${p.lastName||''}`.toLowerCase().includes(q))
-    : profiles;
+  const matched=q ? profiles.filter((p:any)=>String(p.username||'').toLowerCase().includes(q)||`${p.firstName||''} ${p.lastName||''}`.toLowerCase().includes(q)) : profiles;
   const limited=matched.slice(0,500);
+  const currentUid=String(req.user!.uid);
+  const [followingRows,followerRows]=await Promise.all([list('follows',{followerId:currentUid},5000),list('follows',{followingId:currentUid},5000)]);
+  const followingSet=new Set(followingRows.map((x:any)=>String(x.followingId)));
+  const followerSet=new Set(followerRows.map((x:any)=>String(x.followerId)));
   const items=await Promise.all(limited.map(async(p:any)=>{
-    const u:any=await get('users',String(p.userId));
-    return {id:p.userId,name:p.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User'),username:p.username||u?.username||'',avatar:p.avatar||u?.avatar||'',level:Number(u?.level||p?.level||1)};
+    const id=String(p.userId); const u:any=await get('users',id);
+    const isFollowing=followingSet.has(id); const followsMe=followerSet.has(id);
+    return {id,name:p.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User'),username:p.username||u?.username||'',avatar:p.avatar||u?.avatar||'',level:Number(u?.level||p?.level||1),isFollowing,followsMe,isFriend:isFollowing&&followsMe};
   }));
   return res.json({success:true,items,total:matched.length,hasMore:matched.length>limited.length});
 }));

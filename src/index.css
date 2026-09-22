@@ -1138,3 +1138,105 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-entry-label{position:relative;margin-top:4px;padding:4px 11px;border-radius:13px;background:rgba(0,0,0,.48);font-size:12px;font-weight:800;backdrop-filter:blur(8px)}
 .reference-solo-live .solo-comments{display:flex!important;flex-direction:column!important;justify-content:flex-start!important;overflow-y:auto!important;overflow-x:hidden!important;scroll-behavior:smooth!important}
 .reference-solo-live .solo-invite-notice{position:absolute;left:18px;right:18px;top:113px;z-index:71;text-align:center;padding:8px 12px;border-radius:13px;background:rgba(17,14,25,.92);border:1px solid rgba(255,255,255,.12);color:#fff;font-size:10px;font-weight:800;backdrop-filter:blur(12px)}
+
+/* V38 — Find Friends: reference-style production UI */
+.find-friends-page{background:#020014;color:#fff}
+.find-friends-head{height:88px;align-items:center;padding:0 18px;border-bottom:0}
+.find-friends-head h1{font-size:26px;font-weight:700;margin:0}
+.find-friends-search-btn{justify-self:end;width:50px!important;height:50px!important;border-radius:50%!important;background:#111025!important;color:#fff!important}
+.find-friends-search-btn svg{width:27px;height:27px}
+.find-friends-search{height:50px;margin:0 18px 8px;border:1px solid #29253b;border-radius:15px;background:#111021;display:flex;align-items:center;gap:9px;padding:0 12px}
+.find-friends-search>svg{width:19px;color:#817b91;flex:none}
+.find-friends-search input{min-width:0;flex:1;background:transparent;border:0;outline:0;color:#fff;font-size:14px}
+.find-friends-search button{height:34px;padding:0 12px;border-radius:11px;background:#e44bc9;color:#fff;font-weight:700;font-size:12px}
+.find-friends-total{display:flex;align-items:center;gap:7px;margin:3px 24px 10px;color:#787385;font-size:12px}
+.find-friends-total svg{color:#a65be8}.find-friends-total b{color:#fff;font-size:13px}
+.find-friends-list{padding:2px 18px 32px}
+.find-friend-row{min-height:100px;display:grid;grid-template-columns:78px minmax(0,1fr) auto;align-items:center;gap:12px}
+.find-friend-avatar{width:72px;height:72px;min-width:72px;min-height:72px;border-radius:50%!important;overflow:hidden;display:grid;place-items:center;background:#19192b;border:0;padding:0;color:#fff;font-size:27px;flex:none}
+.find-friend-avatar img{width:100%!important;height:100%!important;min-width:100%;min-height:100%;object-fit:cover!important;object-position:center;border-radius:50%!important;display:block}
+.find-friend-info{min-width:0;text-align:left;background:transparent;border:0;padding:0;display:flex;flex-direction:column;align-items:flex-start;gap:5px;color:#fff}
+.find-friend-info b{font-size:20px;font-weight:750;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.find-friend-info span{font-size:16px;color:#777485;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.find-friend-action{min-width:126px;height:44px;padding:0 17px;border:0;border-radius:15px;background:linear-gradient(100deg,#dd48d0,#e84bc4);color:#fff;font-size:16px;font-weight:800;white-space:nowrap}
+.find-friend-action.secondary{background:#242234;color:#eee;border:1px solid #39344d}.find-friend-action:disabled{opacity:.9}
+.find-friend-avatar-viewer{position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;padding:30px}
+.find-friend-avatar-viewer img{width:min(88vw,360px)!important;height:min(88vw,360px)!important;aspect-ratio:1/1;object-fit:cover!important;border-radius:50%!important;box-shadow:0 0 0 3px rgba(224,76,213,.7),0 15px 70px rgba(0,0,0,.7)}
+.find-friend-avatar-viewer>button{position:absolute;right:18px;top:24px;width:46px;height:46px;border-radius:50%;background:#1d1b29;color:#fff;display:grid;place-items:center}
+@media(max-width:360px){.find-friends-head h1{font-size:22px}.find-friends-list{padding-left:12px;padding-right:12px}.find-friend-row{grid-template-columns:62px minmax(0,1fr) auto;gap:9px;min-height:84px}.find-friend-avatar{width:58px;height:58px}.find-friend-info b{font-size:16px}.find-friend-info span{font-size:13px}.find-friend-action{min-width:92px;height:39px;padding:0 10px;font-size:13px;border-radius:13px}}
+
+
+/* V40 — camera-off live keeps the full live UI and audio interactive */
+.reference-solo-live .solo-camera-off-stage {
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-backdrop {
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-center {
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-live-shade {
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-live-top,
+.reference-solo-live .solo-stats,
+.reference-solo-live .solo-comments,
+.reference-solo-live .solo-comment-bar,
+.reference-solo-live .solo-bottom-actions,
+.reference-solo-live .solo-entry-overlay,
+.reference-solo-live .solo-floating-hearts {
+  pointer-events:auto!important;
+}
+.reference-solo-live .solo-comments {
+  z-index:21!important;
+  display:flex!important;
+  flex-direction:column!important;
+}
+.reference-solo-live .solo-comment-bar {
+  z-index:22!important;
+}
+.reference-solo-live .solo-bottom-actions {
+  z-index:23!important;
+}
+.reference-solo-live .solo-entry-overlay {
+  z-index:30!important;
+}
+
+
+/* V40 FINAL — camera-off must never cover the live UI.
+   The camera-off DP/status is a background layer only; all live interactions
+   (stats, entries, comments, audio controls, double-tap hearts) stay above it. */
+.reference-solo-live .solo-camera-off-stage{
+  z-index:4!important;
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-backdrop{
+  z-index:0!important;
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-center{
+  z-index:1!important;
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-live-shade{
+  z-index:5!important;
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-live-top{z-index:20!important}
+.reference-solo-live .solo-stats{z-index:21!important}
+.reference-solo-live .solo-comments{z-index:23!important;pointer-events:none!important}
+.reference-solo-live .solo-comment-bar{z-index:24!important;pointer-events:auto!important}
+.reference-solo-live .solo-bottom-actions{z-index:25!important;pointer-events:auto!important}
+.reference-solo-live .solo-entry-overlay{z-index:26!important;pointer-events:none!important}
+.reference-solo-live .solo-floating-hearts{z-index:27!important;pointer-events:none!important}
+.reference-solo-live .solo-invite-pop,
+.reference-solo-live .solo-viewer-action-backdrop,
+.reference-solo-live .solo-more-pop,
+.reference-solo-live .solo-gift-drawer-backdrop,
+.reference-solo-live .solo-end-modal{z-index:50!important}
+
+/* Solo live has no mode label in the timer card. */
+.reference-solo-live .solo-stats .solo-mode,
+.reference-solo-live .solo-stats .mode-logo,
+.reference-solo-live .solo-stats .live-mode-label{display:none!important}

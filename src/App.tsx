@@ -174,7 +174,7 @@ function App() {
   if (splash || !sessionReady) return <PardaisSplash />;
   if (!authenticated && onboarding && auth.currentUser) return <GoogleOnboarding onComplete={() => { setOnboarding(false); setAuthenticated(true); }} />;
   if (!authenticated) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthenticated={() => setAuthenticated(true)} />;
-  if (fullPage === 'findFriends') return <FindFriendsPage onClose={() => setFullPage(null)} />;
+  if (fullPage === 'findFriends') return <FindFriendsPage onClose={() => setFullPage(null)} onOpenProfile={(uid:string)=>{setViewUserId(uid);setFullPage('userProfile')}} />;
   if (fullPage === 'level') return <LevelSystemPage onBack={() => setFullPage(null)} />;
   if (fullPage === 'userProfile') return <UserProfilePage user={{id:viewUserId}} following={false} onFollow={()=>{}} onBack={() => setFullPage(null)} />;
   if (subPage === 'settings') return <SettingsPage onBack={back} onNotifications={() => setSubPage('notifications')} onEditProfile={() => setSubPage('editProfile')} onLevel={() => setFullPage('level')} onWallet={() => setSubPage('wallet')} onBlocked={() => setSubPage('blockedViewers')} />;
@@ -394,32 +394,35 @@ function ProfileVideoArea({ mode }: { mode: 'Public' | 'Private' | 'Saved' | 'Dr
   </div>;
 }
 
-function FindFriendsPage({ onClose }: { onClose: () => void }) {
+function FindFriendsPage({ onClose, onOpenProfile }: { onClose: () => void; onOpenProfile: (uid: string) => void }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [busyId, setBusyId] = useState('');
+  const [avatarOpen, setAvatarOpen] = useState<any>(null);
   const search = async (term = query) => {
-    const q = term.trim();
-    setLoading(true);
-    try {
-      const r = await api.get(`/api/users/search${q ? `?q=${encodeURIComponent(q)}` : ''}`);
-      setItems(r.data?.items || r.data?.users || []);
-      setTotal(Number(r.data?.total ?? (r.data?.items || []).length));
-    } catch { setItems([]); setTotal(0); }
-    finally { setLoading(false); }
+    const q = term.trim(); setLoading(true);
+    try { const r = await api.get(`/api/users/search${q ? `?q=${encodeURIComponent(q)}` : ''}`); setItems(r.data?.items || r.data?.users || []); setTotal(Number(r.data?.total ?? (r.data?.items || []).length)); }
+    catch { setItems([]); setTotal(0); } finally { setLoading(false); }
   };
   useEffect(() => { void search(''); }, []);
-  return <main className='full-dark-page'>
-    <header className='simple-page-head'><button onClick={onClose}><ChevronLeft/></button><h1>Find Friends</h1><span/></header>
-    <div style={{padding:16}}>
-      <div className='search-box'><Search/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void search()}} placeholder='Search users...' /><button onClick={()=>void search()}><Search size={16}/> Search</button></div>
-      <div className='search-total-users'><Users size={18}/><b>{total}</b><span>{query.trim() ? 'matching users' : 'total registered users'}</span></div>
-      {loading && <div className='empty-state'><span>Loading users...</span></div>}
-      {!loading && query.trim() && !items.length && <div className='empty-state'><Users/><b>No users found</b><span>Try another name or username.</span></div>}
-      {!loading && !items.length && !query.trim() && <div className='empty-state'><Users/><b>No users yet</b><span>Registered Pardais users will appear here.</span></div>}
-      <div className='user-list'>{items.map((u:any)=><div className='user-row' key={u.id}><div className='user-avatar'>{u.avatar?<img src={u.avatar} alt=''/>:'P'}</div><div><b>{u.name || 'Pardais User'}</b><small>{u.username || ''} · Lv.{u.level || 1}</small></div></div>)}</div>
-    </div>
+  const follow = async (u:any) => { const uid=String(u.id||''); if(!uid || busyId===uid)return; setBusyId(uid); try { await api.post('/api/follow',{followingId:uid,action:u.isFollowing?'unfollow':'follow'}); await search(); } catch {} finally { setBusyId(''); } };
+  const buttonLabel = (u:any) => u.isFriend ? 'Friends' : (u.followsMe && !u.isFollowing) ? 'Follow back' : u.isFollowing ? 'Following' : 'Follow';
+  return <main className='full-dark-page find-friends-page'>
+    <header className='simple-page-head find-friends-head'><button onClick={onClose}><ChevronLeft/></button><h1>Find Friends</h1><button className='find-friends-search-btn' aria-label='Search users' onClick={()=>setSearchOpen(v=>!v)}><Search/></button></header>
+    {searchOpen && <div className='find-friends-search'><Search/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void search()}} placeholder='Search name or @username'/><button onClick={()=>void search()}>Search</button></div>}
+    <div className='find-friends-total'><Users size={17}/><b>{total}</b><span>{query.trim() ? 'matching users' : 'users on Pardais'}</span></div>
+    {loading && <div className='empty-state'><span>Loading users...</span></div>}
+    {!loading && query.trim() && !items.length && <div className='empty-state'><Users/><b>No users found</b><span>Try another name or username.</span></div>}
+    {!loading && !items.length && !query.trim() && <div className='empty-state'><Users/><b>No users yet</b><span>Registered Pardais users will appear here.</span></div>}
+    {!loading && items.length>0 && <div className='find-friends-list'>{items.map((u:any)=>{ const avatar=u.avatar||''; const name=u.name||'Pardais User'; const username=String(u.username||'').replace(/^@+/,''); const label=buttonLabel(u); return <div className='find-friend-row' key={u.id}>
+      <button className='find-friend-avatar' onClick={()=>avatar&&setAvatarOpen({url:avatar,name})} aria-label={`View ${name} profile picture`}>{avatar?<img src={avatar} alt=''/>:<span>{String(name).slice(0,1).toUpperCase()}</span>}</button>
+      <button className='find-friend-info' onClick={()=>onOpenProfile(String(u.id))}><b>{name}</b><span>@{username}</span></button>
+      <button className={`find-friend-action ${label==='Friends'||label==='Following'?'secondary':''}`} disabled={busyId===String(u.id)||label==='Friends'} onClick={()=>void follow(u)}>{busyId===String(u.id)?'…':label}</button>
+    </div>;})}</div>}
+    {avatarOpen&&<div className='find-friend-avatar-viewer' onClick={e=>{if(e.target===e.currentTarget)setAvatarOpen(null)}}><button onClick={()=>setAvatarOpen(null)}><X/></button><img src={avatarOpen.url} alt={avatarOpen.name}/></div>}
   </main>;
 }
 

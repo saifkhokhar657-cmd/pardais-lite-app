@@ -12,6 +12,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const camRef = useRef<ICameraVideoTrack | null>(null);
   const localVideoRef = useRef<HTMLDivElement | null>(null);
   const remoteVideoRef = useRef<HTMLDivElement | null>(null);
+  const remoteAudioTracksRef = useRef<any[]>([]);
   const [micOn, setMicOn] = useState(Boolean(room.isHost));
   const [cameraOn, setCameraOn] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
@@ -47,7 +48,6 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [entryLabel, setEntryLabel] = useState('');
   const [entryAvatar, setEntryAvatar] = useState('');
   const [entryName, setEntryName] = useState('');
-  const [liveMode, setLiveMode] = useState(String((room as any).displayMode || 'SOLO'));
   const [incomingInvites, setIncomingInvites] = useState<any[]>([]);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [viewerList, setViewerList] = useState<any[]>([]);
@@ -73,7 +73,6 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         const r = await api.get(`/api/live/state/${room.id}`);
         if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
         if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
-        if (r.data?.displayMode) setLiveMode(String(r.data.displayMode));
       } catch (e: any) {
         if (!room.isHost && (e?.response?.status === 404 || String(e?.message || '').includes('404'))) setBroadcastEnded(true);
       }
@@ -207,17 +206,24 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
             setRemoteCameraOn(true);
             if (remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current);
           }
-          if (mediaType === 'audio' && user.audioTrack) user.audioTrack.play();
+          if (mediaType === 'audio' && user.audioTrack) {
+            if (!remoteAudioTracksRef.current.includes(user.audioTrack)) remoteAudioTracksRef.current.push(user.audioTrack);
+            try { user.audioTrack.play(); } catch {}
+          }
         });
         client.on('user-unpublished', (_user: IAgoraRTCRemoteUser, mediaType: 'audio'|'video') => {
           setViewerCount(client.remoteUsers.length);
           if (mediaType === 'video') setRemoteCameraOn(false);
+        if (mediaType === 'audio') {
+          const track = _user.audioTrack;
+          if (track) remoteAudioTracksRef.current = remoteAudioTracksRef.current.filter(t => t !== track);
+        }
         });
         client.on('user-left', () => setViewerCount(client.remoteUsers.length));
         for (const user of client.remoteUsers) {
           if (user.hasVideo || user.hasAudio) {
             if (user.hasVideo) { await client.subscribe(user, 'video'); setRemoteCameraOn(true); if (remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current); }
-            if (user.hasAudio) { await client.subscribe(user, 'audio'); user.audioTrack?.play(); }
+            if (user.hasAudio) { await client.subscribe(user, 'audio'); if (user.audioTrack) { if (!remoteAudioTracksRef.current.includes(user.audioTrack)) remoteAudioTracksRef.current.push(user.audioTrack); try { user.audioTrack.play(); } catch {} } }
           }
         }
         if (room.isHost) {
@@ -240,6 +246,24 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       })();
     };
   }, [room.id]);
+
+  // Mobile browsers can block remote audio until the viewer interacts with the page.
+  // Keep the Agora audio track published/playing even when the host camera is OFF.
+  useEffect(() => {
+    const unlockAudio = () => {
+      for (const track of remoteAudioTracksRef.current) {
+        try { track.play(); } catch {}
+      }
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('click', unlockAudio, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio);
+    };
+  }, []);
 
   const toggleMic = async () => {
     const track = micRef.current; if (!track || !clientRef.current) return;
@@ -484,7 +508,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         </div>
       </div>
       <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || '').slice(0,1).toUpperCase()}</span>}</div>)}</div>
-      <div className="solo-live-mode-pill">{liveMode}</div>{inviteNotice && <div className="solo-invite-notice">{inviteNotice}</div>}<div className="solo-top-actions">
+      {inviteNotice && <div className="solo-invite-notice">{inviteNotice}</div>}<div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
         <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
       </div>
