@@ -594,3 +594,116 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
  .reference-solo-live .solo-camera-off b{font-size:18px!important}
  .reference-solo-live .solo-camera-off>span{font-size:13px!important}
 }
+
+/* V25 — exact reference behavior: reels behind the top chrome, live camera-off uses ONE real image layer. */
+.home-feed-screen .reel-feed-scroll{
+  margin-top:0!important;
+  padding-top:0!important;
+  height:100dvh!important;
+  min-height:100dvh!important;
+}
+.home-feed-screen .reel-feed-scroll .reel-stage.home-reel-stage{
+  height:100dvh!important;
+  min-height:100dvh!important;
+  flex:0 0 100dvh!important;
+  width:100%!important;
+}
+.home-feed-screen .home-feed-top{
+  position:absolute!important;
+  top:0!important;
+  left:0!important;
+  right:0!important;
+  height:88px!important;
+  background:linear-gradient(180deg,rgba(0,0,0,.52),rgba(0,0,0,0))!important;
+  z-index:30!important;
+  pointer-events:none!important;
+}
+.home-feed-screen .home-feed-top>*{pointer-events:auto!important}
+.home-feed-screen .home-reel-video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  z-index:1!important;
+}
+.home-feed-screen .reference-reel-actions{
+  position:absolute!important;
+  right:10px!important;
+  bottom:118px!important;
+  z-index:18!important;
+}
+.home-feed-screen .reference-reel-meta{z-index:18!important;bottom:92px!important}
+.home-feed-screen .home-sound-toggle{z-index:19!important}
+.home-feed-screen .bottom{position:absolute!important;left:0!important;right:0!important;bottom:0!important;z-index:40!important}
+
+/* Remove the old camera-off workaround completely. The host avatar is rendered once,
+   as a sharp full-screen image. No blurred CSS background and no duplicate circular DP. */
+.reference-solo-live .solo-live-background,
+.reference-solo-live .solo-live-background-shade{display:none!important}
+.reference-solo-live .solo-camera-off-media{
+  position:absolute!important;
+  inset:0!important;
+  z-index:2!important;
+  width:100%!important;
+  height:100%!important;
+  overflow:hidden!important;
+  background:#050507!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+.reference-solo-live .solo-camera-off-media img{
+  width:100%!important;
+  height:100%!important;
+  display:block!important;
+  object-fit:cover!important;
+  object-position:center!important;
+  filter:none!important;
+  image-rendering:auto!important;
+}
+.reference-solo-live .solo-camera-off-media span{
+  font-size:96px!important;
+  font-weight:900!important;
+  color:#fff!important;
+}
+.reference-solo-live .solo-live-video{z-index:4!important;background:transparent!important}
+.reference-solo-live .solo-live-video.has-video{z-index:5!important}
+.reference-solo-live .solo-live-shade{z-index:6!important;background:linear-gradient(180deg,rgba(0,0,0,.12),transparent 35%,rgba(0,0,0,.12) 100%)!important}
+.reference-solo-live .solo-camera-off{
+  z-index:12!important;
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  padding:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  pointer-events:none!important;
+  text-align:center!important;
+}
+.reference-solo-live .solo-camera-off-avatar{display:none!important}
+.reference-solo-live .solo-camera-off-status,
+.reference-solo-live .solo-status-icon{
+  width:76px!important;
+  height:76px!important;
+  border-radius:50%!important;
+  display:grid!important;
+  place-items:center!important;
+  margin:0 auto 12px!important;
+  background:rgba(10,10,14,.55)!important;
+  border:2px solid rgba(255,255,255,.8)!important;
+  box-shadow:0 8px 30px rgba(0,0,0,.35)!important;
+}
+.reference-solo-live .solo-camera-off-status svg,
+.reference-solo-live .solo-status-icon svg{width:36px!important;height:36px!important}
+.reference-solo-live .solo-camera-off b{font-size:20px!important;text-shadow:0 2px 10px #000!important}
+.reference-solo-live .solo-camera-off>span{font-size:14px!important;color:rgba(255,255,255,.9)!important;text-shadow:0 2px 10px #000!important;margin-top:4px!important}
+@media(max-width:430px){
+  .reference-solo-live .solo-camera-off-status,
+  .reference-solo-live .solo-status-icon{width:68px!important;height:68px!important}
+  .reference-solo-live .solo-camera-off b{font-size:18px!important}
+  .reference-solo-live .solo-camera-off>span{font-size:13px!important}
+}
