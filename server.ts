@@ -62,7 +62,20 @@ app.get('/firebase-config.js', (_req, res) => {
 });
 
 app.get('/api/_healthcheck', (_req, res) => res.json({ message: 'Success' }));
-app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', time: now() }));
+app.get('/api/health', async (_req, res) => {
+  // Keep this endpoint public and diagnostic. It distinguishes a healthy API
+  // process from a deployed API whose Firebase credentials/database are broken.
+  if (!firebaseCredentialsConfigured) {
+    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase server credentials are not configured on the API server.', firebase: 'missing-service-account', time: now() });
+  }
+  try {
+    await db.collection('_system').doc('health').get();
+    return res.json({ ok: true, app: 'Pardais Lite', version: '1.0.0', firebase: 'ready', time: now() });
+  } catch (error: any) {
+    console.error('Health check database error:', error);
+    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase/Firestore is not reachable from the API server.', firebase: 'database-error', detail: process.env.NODE_ENV === 'production' ? undefined : String(error?.message || error), time: now() });
+  }
+});
 app.get('/api/config', (_req, res) => res.json({
   appName: 'Pardais Lite', apiVersion: 'v1',
   realtime: { provider: 'agora', status: process.env.AGORA_APP_ID ? 'ready' : 'missing-credentials' },
