@@ -707,3 +707,50 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   .reference-solo-live .solo-camera-off b{font-size:18px!important}
   .reference-solo-live .solo-camera-off>span{font-size:13px!important}
 }
+
+
+/* V26 — final reel profile position + true camera-off profile presentation */
+.home-feed-screen .reel-author-block{bottom:445px!important}
+@media(max-width:430px){.home-feed-screen .reel-author-block{bottom:445px!important}}
+
+.reference-solo-live .solo-camera-off-media{
+  position:absolute!important;inset:0!important;z-index:0!important;overflow:hidden!important;
+  background:#080812!important;pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-media img{
+  position:absolute!important;inset:-5%!important;width:110%!important;height:110%!important;
+  object-fit:cover!important;filter:blur(24px) brightness(.52)!important;transform:scale(1.08)!important;
+}
+.reference-solo-live .solo-camera-off-media>span{
+  position:absolute!important;inset:0!important;display:grid!important;place-items:center!important;
+  font-size:150px!important;font-weight:900!important;color:#fff!important;background:#191524!important;
+}
+.reference-solo-live .solo-camera-off{
+  z-index:6!important;inset:0!important;display:flex!important;flex-direction:column!important;
+  align-items:center!important;justify-content:center!important;text-align:center!important;
+  padding:130px 20px 170px!important;pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-avatar{
+  width:min(58vw,260px)!important;height:min(58vw,260px)!important;
+  margin:0 0 18px!important;border-radius:50%!important;overflow:hidden!important;
+  background:#29222f!important;border:4px solid rgba(255,255,255,.95)!important;
+  box-shadow:0 0 0 5px rgba(168,85,247,.72),0 12px 45px rgba(0,0,0,.45)!important;
+  display:grid!important;place-items:center!important;font-size:88px!important;font-weight:900!important;
+}
+.reference-solo-live .solo-camera-off-avatar img{width:100%!important;height:100%!important;object-fit:cover!important}
+.reference-solo-live .solo-camera-off-avatar span{display:grid;place-items:center;width:100%;height:100%;background:#29222f;color:#fff}
+.reference-solo-live .solo-status-icon{
+  width:52px!important;height:52px!important;border-radius:50%!important;display:grid!important;place-items:center!important;
+  background:rgba(225,47,54,.9)!important;color:#fff!important;border:2px solid rgba(255,255,255,.7)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.35)!important;margin:0 0 10px!important;
+}
+.reference-solo-live .solo-status-icon svg{width:25px!important;height:25px!important}
+.reference-solo-live .solo-camera-off b{font-size:20px!important;line-height:1.15!important}
+.reference-solo-live .solo-camera-off span{font-size:13px!important;color:rgba(255,255,255,.75)!important;margin-top:5px!important}
+.reference-solo-live.host-live .solo-camera-off-media{display:block!important}
+.reference-solo-live.viewer-live .solo-camera-off-media{display:block!important}
+@media(max-width:430px){
+  .reference-solo-live .solo-camera-off{padding:115px 14px 150px!important}
+  .reference-solo-live .solo-camera-off-avatar{width:52vw!important;height:52vw!important;max-width:235px!important;max-height:235px!important;margin-bottom:15px!important}
+  .reference-solo-live .solo-status-icon{width:48px!important;height:48px!important}
+}

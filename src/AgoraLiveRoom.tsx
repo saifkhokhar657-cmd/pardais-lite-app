@@ -243,8 +243,9 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </div>
 
     {((room.isHost && (!cameraOn || !micOn)) || (!room.isHost && !remoteCameraOn)) && <div className="solo-camera-off">
-      {room.isHost && cameraOn && !micOn && <div className="solo-status-icon"><MicOff /></div>}
-      {!cameraOn && <div className="solo-camera-off-status"><CameraOff /></div>}
+      {!cameraOn && <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+      {!cameraOn && <div className="solo-status-icon solo-status-camera"><CameraOff /></div>}
+      {room.isHost && !micOn && <div className="solo-status-icon solo-status-mic"><MicOff /></div>}
       {!cameraOn && <b>Camera is off</b>}
       {room.isHost && cameraOn && !micOn && <b>Microphone is off</b>}
       <span>{room.isHost ? (micOn ? 'Your audio is live' : 'Your microphone is off') : 'Camera is off'}</span>
