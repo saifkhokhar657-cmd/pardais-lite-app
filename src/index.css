@@ -526,3 +526,33 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 /* Critical reel feed layout: each reel must occupy its own snap page, not overlap as absolute layers. */
 .home-feed-screen .reel-feed-scroll .reel-stage.home-reel-stage{position:relative!important;inset:auto!important;top:auto!important;bottom:auto!important;left:auto!important;right:auto!important;width:100%!important;height:calc(100dvh - 76px - var(--nav-h))!important;min-height:0!important;flex:0 0 calc(100dvh - 76px - var(--nav-h))!important;}
 .home-feed-screen .reel-feed-scroll{display:flex!important;flex-direction:column!important;}
+
+/* V23 — startup/session, reel warm-cache + loading state, and true full-screen camera-off media */
+.pardais-splash{min-height:100dvh}
+.home-feed-screen .reel-video-loader{position:absolute;inset:0;z-index:6;display:grid;place-items:center;pointer-events:none;background:rgba(0,0,0,.08)}
+.home-feed-screen .reel-video-loader span{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.28);border-top-color:#fff;animation:pardais-reel-spin .75s linear infinite}
+@keyframes pardais-reel-spin{to{transform:rotate(360deg)}}
+
+/* The camera-off visual is its own layer. It must sit above the backdrop and
+   below the controls, not inside/behind the small profile avatar. */
+.reference-solo-live .solo-live-background{z-index:0!important;background-position:center center!important;background-size:cover!important;background-repeat:no-repeat!important}
+.reference-solo-live .solo-live-background-shade{z-index:1!important;background:rgba(0,0,0,.10)!important}
+.reference-solo-live .solo-live-video{z-index:2!important}
+.reference-solo-live .solo-live-shade{z-index:3!important}
+.reference-solo-live .solo-camera-off{z-index:6!important;position:absolute!important;inset:0!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;padding:120px 16px 150px!important}
+.reference-solo-live .solo-camera-off-avatar{position:relative!important;width:min(62vw,270px)!important;height:min(62vw,270px)!important;max-width:270px!important;max-height:270px!important;flex:0 0 auto!important;margin:0 auto 16px!important;border-radius:50%!important;overflow:hidden!important;background:#16131e center/cover no-repeat!important;border:4px solid rgba(255,255,255,.92)!important;box-shadow:0 0 0 4px rgba(168,85,247,.72),0 14px 55px rgba(0,0,0,.45)!important;display:grid!important;place-items:center!important}
+.reference-solo-live .solo-camera-off-avatar img{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important}
+.reference-solo-live .solo-camera-off-avatar span{font-size:86px!important;font-weight:800!important;color:#fff!important}
+.reference-solo-live .solo-camera-off b{position:relative!important;font-size:20px!important;line-height:1.2!important;text-shadow:0 2px 10px rgba(0,0,0,.7)!important}
+.reference-solo-live .solo-camera-off span{position:relative!important;font-size:14px!important;color:rgba(255,255,255,.78)!important;margin-top:5px!important;text-shadow:0 2px 8px rgba(0,0,0,.7)!important}
+.reference-solo-live .solo-live-top{z-index:10!important}
+.reference-solo-live .solo-stats{z-index:9!important}
+.reference-solo-live .solo-comment-bar{z-index:11!important}
+.reference-solo-live .solo-bottom-actions{z-index:12!important}
+.reference-solo-live .solo-floating-hearts{z-index:30!important}
+@media(max-width:390px){
+ .reference-solo-live .solo-camera-off{padding:105px 12px 125px!important}
+ .reference-solo-live .solo-camera-off-avatar{width:min(58vw,220px)!important;height:min(58vw,220px)!important}
+ .reference-solo-live .solo-camera-off b{font-size:18px!important}
+ .reference-solo-live .solo-camera-off span{font-size:13px!important}
+}

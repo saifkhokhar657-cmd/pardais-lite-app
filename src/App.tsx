@@ -32,9 +32,8 @@ function PardaisSplash() {
 }
 
 function App() {
-  const [splash, setSplash] = useState(() => {
-    try { return localStorage.getItem('pardaisLiteSplashSeen') !== '1'; } catch { return true; }
-  });
+  const [splash, setSplash] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
   const [tab, setTab] = useState<Tab>('home');
   const [createMode, setCreateMode] = useState<'upload' | 'live'>('upload');
   const [subPage, setSubPage] = useState<SubPage>(null);
@@ -75,26 +74,36 @@ function App() {
         unsubscribe = onAuthStateChanged(auth, user => {
         if (!mounted) return;
         if (user) {
+          // Firebase persistence restores the existing session before the backend profile
+          // request finishes. Enter the app immediately; only fall back to onboarding if
+          // the backend explicitly says this account is incomplete.
           try {
             localStorage.setItem('pardaisLiteUserId', user.uid);
             localStorage.setItem('pardaisLiteEmail', user.email || '');
             localStorage.setItem('pardaisLiteAuth', '1');
           } catch {}
+          setOnboarding(false);
+          setAuthenticated(true);
           void api.get('/api/auth/me').then(r => {
-            const complete = Boolean(r.data?.onboardingComplete);
+            const complete = r.data?.onboardingComplete !== false;
             setOnboarding(!complete);
             setAuthenticated(complete);
-          }).catch(() => { setOnboarding(true); setAuthenticated(false); });
+          }).catch(() => {
+            // Keep the restored Firebase session usable if the profile API is temporarily slow.
+            setOnboarding(false);
+            setAuthenticated(true);
+          });
         } else {
           try {
             localStorage.removeItem('pardaisLiteAuth');
             localStorage.removeItem('pardaisLiteUserId');
           } catch {}
         }
+          setSessionReady(true);
         });
         setAuthReady(true);
       } catch {
-        if (mounted) setAuthReady(true);
+        if (mounted) { setAuthReady(true); setSessionReady(true); }
       }
     };
     void startAuth();
@@ -162,7 +171,7 @@ function App() {
     else nav('profile');
   };
 
-  if (splash) return <PardaisSplash />;
+  if (splash || !sessionReady) return <PardaisSplash />;
   if (!authenticated && onboarding && auth.currentUser) return <GoogleOnboarding onComplete={() => { setOnboarding(false); setAuthenticated(true); }} />;
   if (!authenticated) return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthenticated={() => setAuthenticated(true)} />;
   if (fullPage === 'findFriends') return <FindFriendsPage onClose={() => setFullPage(null)} />;
@@ -224,14 +233,22 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   const [giftOpen,setGiftOpen]=useState(false);
   const [giftBusy,setGiftBusy]=useState(false);
   const [soundOn,setSoundOn]=useState(false);
+  const [videoLoading,setVideoLoading]=useState(true);
   const [followBusy,setFollowBusy]=useState(false);
   const feedRef=useRef<HTMLDivElement|null>(null);
   const videoRefs=useRef<Record<string,HTMLVideoElement|null>>({});
   const load=async()=>{try{const r=await api.get(`/api/feed?mode=${homeMode.toLowerCase().replace(' ','-')}`);setItems(r.data?.items||[]);setIndex(0)}catch{setItems([])}};
   useEffect(()=>{void load();},[homeMode]);
+  // Warm the active reel and the next two R2 media URLs so the next swipe can
+  // start from the browser cache instead of waiting for a fresh network request.
+  useEffect(()=>{
+    const urls=items.slice(index,index+3).map((x:any)=>x?.mediaUrl).filter(Boolean);
+    urls.forEach((url:string)=>{ try { void fetch(url,{mode:'cors',cache:'force-cache'}).catch(()=>{}); } catch {} });
+  },[items,index]);
   useEffect(()=>{const el=feedRef.current;if(!el)return;const onScroll=()=>{const h=el.clientHeight||1;const next=Math.max(0,Math.min(items.length-1,Math.round(el.scrollTop/h)));setIndex(next);const item=items[next];if(item)void registerView(String(item.id));};el.addEventListener('scroll',onScroll,{passive:true});return()=>el.removeEventListener('scroll',onScroll)},[items.length]);
   useEffect(()=>{if(items[0])void registerView(String(items[0].id))},[items.length]);
   useEffect(()=>{
+    setVideoLoading(Boolean(items[index]?.mediaUrl));
     const activeId=items[index]?.id;
     Object.entries(videoRefs.current).forEach(([id,video])=>{
       if(!video)return;
@@ -259,7 +276,7 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   return <main className='reel-screen home-feed-screen'>
     <div className='reel-top home-feed-top'><button className={homeMode==='Following'?'tab active':'tab muted'} onClick={()=>setHomeMode('Following')}>Following</button><button className={homeMode==='For You'?'tab active':'tab muted'} onClick={()=>setHomeMode('For You')}>For You</button><button className='search-icon' onClick={onSearch}><Search/></button></div>
     {!items.length?<div className='following-empty'><Video/><b>No videos yet</b><span>Real published reels will appear here.</span></div>:<div ref={feedRef} className='reel-feed-scroll'>{items.map((r,i)=><section className='reel-stage home-reel-stage' key={r.id} onDoubleClick={()=>void like()}>
-      <video ref={el=>{videoRefs.current[String(r.id)]=el}} src={r.mediaUrl} controls={false} autoPlay={false} muted={!soundOn} loop playsInline preload={i===index?'auto':'metadata'} className='home-reel-video' onLoadedData={e=>{if(i===index){const v=e.currentTarget;v.muted=!soundOn;void v.play().catch(()=>{})}}} onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/><button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
+      <video ref={el=>{videoRefs.current[String(r.id)]=el}} src={r.mediaUrl} controls={false} autoPlay={false} muted={!soundOn} loop playsInline preload={Math.abs(i-index)<=1?'auto':'none'} className='home-reel-video' onLoadedData={e=>{if(i===index){setVideoLoading(false);const v=e.currentTarget;v.muted=!soundOn;void v.play().catch(()=>{})}}} onCanPlay={e=>{if(i===index)setVideoLoading(false)}} onPlaying={()=>{if(i===index)setVideoLoading(false)}} onWaiting={()=>{if(i===index)setVideoLoading(true)}} onError={()=>{if(i===index)setVideoLoading(false)}} onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/>{i===index&&videoLoading&&<div className='reel-video-loader' aria-label='Loading video'><span/></div>}<button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
       <button className='reel-author-block' aria-label='Open creator profile' onClick={()=>onOpenProfile(String(r.userId))}><div className='home-dp'>{r.author?.avatar?<img src={r.author.avatar} alt=''/>:<span>{String(r.author?.name||'P').slice(0,1).toUpperCase()}</span>}<span className='home-dp-plus'>+</span></div></button>
       <div className='reel-actions reference-reel-actions'>
         <button onClick={()=>void like()} aria-label='Like video'><Heart fill={r.likedByMe?'currentColor':'none'}/><span>{r.likesCount||0}</span></button>
