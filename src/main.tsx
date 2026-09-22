@@ -20,7 +20,7 @@ function BootScreen({ error }: { error?: string }) {
       </div>
       {!error ? <div className='splash-loading'><i/><i/><i/><i/><i/></div> : (
         <div style={{ position:'absolute', left:24, right:24, bottom:32, textAlign:'center', color:'#ffb8ee', fontSize:12, lineHeight:1.45 }}>
-          App could not load. Please refresh.
+          {!navigator.onLine ? 'No internet connection. Please reconnect and try again.' : 'App could not load. Please refresh.'}
           <button type='button' onClick={() => window.location.reload()} style={{ display:'block', margin:'10px auto 0', padding:'9px 18px', borderRadius:12, background:'#e34bd2', color:'#fff', fontWeight:700 }}>Refresh</button>
           <div style={{ marginTop:8, color:'#756b82', fontSize:9, wordBreak:'break-word' }}>{error}</div>
         </div>

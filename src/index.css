@@ -1240,3 +1240,17 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-stats .solo-mode,
 .reference-solo-live .solo-stats .mode-logo,
 .reference-solo-live .solo-stats .live-mode-label{display:none!important}
+
+/* V42 production network + offline cache feedback */
+.global-network-notice{
+  position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:50%;transform:translateX(-50%);z-index:10000;
+  width:min(94vw,430px);min-height:52px;padding:9px 10px 9px 12px;border:1px solid rgba(255,255,255,.16);
+  border-radius:16px;background:rgba(18,16,30,.94);backdrop-filter:blur(14px);box-shadow:0 12px 35px rgba(0,0,0,.35);
+  display:flex;align-items:center;gap:9px;color:#fff
+}
+.global-network-notice>svg{color:#ffbf55;flex:none}
+.global-network-notice>div{min-width:0;flex:1}
+.global-network-notice b{display:block;font-size:12px;line-height:1.2}
+.global-network-notice span{display:block;color:#b8b3c4;font-size:10px;line-height:1.35;margin-top:3px}
+.global-network-notice button{border:0;border-radius:10px;padding:8px 10px;background:#d94fd4;color:#fff;font-weight:700;font-size:10px;flex:none}
+.feed-cache-notice{position:absolute;z-index:40;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:14px;background:rgba(18,16,30,.78);backdrop-filter:blur(10px);color:#fff;font-size:10px;white-space:nowrap;border:1px solid rgba(255,255,255,.12)}

@@ -10,12 +10,37 @@ async function headers(contentType = false) {
   return h;
 }
 
+export function friendlyNetworkMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {
+  const raw = String((error as any)?.message || error || '').trim();
+  if (!navigator.onLine || /failed to fetch|networkerror|network request failed|load failed|offline/i.test(raw)) {
+    return 'Your internet connection is weak or you are not connected. Please check your internet and reconnect.';
+  }
+  if (/timeout|timed out|504|502|503/i.test(raw)) return 'The server is taking too long to respond. Please try again.';
+  if (/401|403|unauthor/i.test(raw)) return 'Your session has expired. Please log in again.';
+  return raw || fallback;
+}
+
+export function reportAppError(error: unknown, fallback?: string) {
+  const message = friendlyNetworkMessage(error, fallback);
+  try { window.dispatchEvent(new CustomEvent('pardais:app-error', { detail: { message } })); } catch {}
+  return message;
+}
+
 async function request(path: string, init: RequestInit = {}) {
-  const h = await headers(Boolean(init.body));
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...h, ...(init.headers || {}) } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(String(data?.error || `${init.method || 'GET'} ${path} failed (${response.status})`));
-  return { data };
+  try {
+    const h = await headers(Boolean(init.body));
+    const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...h, ...(init.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(String(data?.error || `${init.method || 'GET'} ${path} failed (${response.status})`));
+      reportAppError(error);
+      throw error;
+    }
+    return { data };
+  } catch (error) {
+    reportAppError(error);
+    throw error;
+  }
 }
 
 export const api = {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { browserLocalPersistence, createUserWithEmailAndPassword, GoogleAuthProvider, onAuthStateChanged, sendPasswordResetEmail, setPersistence, signInWithEmailAndPassword, signInWithPopup, signOut, updateProfile, updatePassword } from 'firebase/auth';
 import { auth } from './firebase';
-import { api, API_BASE } from './api';
+import { api, API_BASE, friendlyNetworkMessage, reportAppError } from './api';
+import { cacheReel, getCachedReels, loadFeedMetadata, saveFeedMetadata } from './reelCache';
 import { AgoraLiveRoom } from './AgoraLiveRoom';
 import {
   Bell, Ban, Bookmark, CalendarDays, Camera, ChevronLeft, ChevronRight, CircleHelp,
@@ -29,6 +30,33 @@ function PardaisLiteLogo({ compact = false }: { compact?: boolean }) {
 
 function PardaisSplash() {
   return <main className='pardais-splash' aria-label='Pardais Lite splash screen'><PardaisLiteLogo /><div className='splash-loading'><i/><i/><i/><i/><i/></div></main>;
+}
+
+function NetworkStatus() {
+  const [offline, setOffline] = useState(() => !navigator.onLine);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    const goOffline = () => { setOffline(true); setMessage('Your internet connection is weak or you are not connected. Please check your internet and reconnect.'); };
+    const goOnline = () => { setOffline(false); setMessage(''); };
+    const onError = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      setMessage(String(detail.message || 'Something went wrong. Please try again.'));
+      window.setTimeout(() => setMessage(''), 5000);
+    };
+    const onWindowError = (event: ErrorEvent) => { if (event.error || event.message) onError(new CustomEvent('pardais:app-error', { detail: { message: friendlyNetworkMessage(event.error || event.message) } })); };
+    const onUnhandled = (event: PromiseRejectionEvent) => { onError(new CustomEvent('pardais:app-error', { detail: { message: friendlyNetworkMessage(event.reason) } })); };
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('pardais:app-error', onError);
+    window.addEventListener('error', onWindowError);
+    window.addEventListener('unhandledrejection', onUnhandled);
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); window.removeEventListener('pardais:app-error', onError); window.removeEventListener('error', onWindowError); window.removeEventListener('unhandledrejection', onUnhandled); };
+  }, []);
+  if (!offline && !message) return null;
+  return <div className='global-network-notice' role='alert'>
+    <TriangleAlert size={17}/><div><b>{offline ? 'No internet connection' : 'Connection problem'}</b><span>{message || 'Please check your internet connection and reconnect.'}</span></div>
+    {offline && <button onClick={()=>window.location.reload()}>Reconnect</button>}
+  </div>;
 }
 
 function App() {
@@ -188,10 +216,10 @@ function App() {
   if (subPage === 'wallet') return <WalletPage onBack={back} />;
   if (subPage === 'blockedViewers') return <BlockedViewersPage onBack={back} />;
 
-  return <div className="app-shell"><div className="phone">
+  return <div className="app-shell"><NetworkStatus/><div className="phone">
     {tab === 'home' && <HomeScreen homeMode={homeMode} setHomeMode={setHomeMode} liked={liked} setLiked={setLiked} saved={saved} setSaved={setSaved} followed={followed} setFollowed={setFollowed} onSearch={() => setFullPage('findFriends')} onOpenProfile={(uid:string)=>{setViewUserId(uid);setFullPage('userProfile')}} />}
     {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} onGoLiveSetup={() => { setCreateMode('live'); setTab('create'); }} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} onViewProfile={(uid:string)=>{setActiveLiveRoom(null);setViewUserId(uid);setFullPage('userProfile')}} />}
-    {tab === 'create' && <CreateScreen mode={createMode} camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); }} />}
+    {tab === 'create' && <CreateScreen mode={createMode} camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { try { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); } catch (e) { reportAppError(e,'Could not start live. Please check your internet connection and try again.'); } }} />}
     {tab === 'inbox' && <InboxScreen />}
     {tab === 'profile' && <ProfileScreen onSettings={() => setSubPage('settings')} onEdit={() => setSubPage('editProfile')} onFollowers={() => setSubPage('followers')} onShare={() => setProfileOverlay('share')} onLevel={() => setFullPage('level')} profileTab={profileTab} setProfileTab={setProfileTab} onCreator={() => setSubPage('creator')} onAgency={() => setSubPage('agency')} onWallet={() => setSubPage('wallet')} />}
     {tab !== 'create' && <BottomNav tab={tab} nav={nav} />}
@@ -237,14 +265,31 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   const [followBusy,setFollowBusy]=useState(false);
   const feedRef=useRef<HTMLDivElement|null>(null);
   const videoRefs=useRef<Record<string,HTMLVideoElement|null>>({});
-  const load=async()=>{try{const r=await api.get(`/api/feed?mode=${homeMode.toLowerCase().replace(' ','-')}`);setItems(r.data?.items||[]);setIndex(0)}catch{setItems([])}};
+  const cachedMedia=useRef<Record<string,string>>({});
+  const [cachedSrc,setCachedSrc]=useState<Record<string,string>>({});
+  const load=async()=>{
+    const modeKey=homeMode.toLowerCase().replace(' ','-');
+    try{
+      const r=await api.get(`/api/feed?mode=${modeKey}`);
+      const fresh=Array.isArray(r.data?.items)?r.data.items:[];
+      setItems(fresh);setIndex(0);saveFeedMetadata(modeKey,fresh);
+    }catch(error){
+      const cached=loadFeedMetadata(modeKey);
+      if(cached.length){ setItems(cached); setIndex(0); setMessageForFeed('You are offline. Playing cached videos.'); }
+      else { setItems([]); reportAppError(error,'No reels could be loaded. Please check your internet connection and try again.'); }
+    }
+  };
+  const [feedMessage,setFeedMessage]=useState('');
+  const setMessageForFeed=(m:string)=>{setFeedMessage(m);window.setTimeout(()=>setFeedMessage(''),4500)};
   useEffect(()=>{void load();},[homeMode]);
-  // Warm the active reel and the next two R2 media URLs so the next swipe can
-  // start from the browser cache instead of waiting for a fresh network request.
   useEffect(()=>{
-    const urls=items.slice(index,index+3).map((x:any)=>x?.mediaUrl).filter(Boolean);
-    urls.forEach((url:string)=>{ try { void fetch(url,{mode:'cors',cache:'force-cache'}).catch(()=>{}); } catch {} });
-  },[items,index]);
+    let cancelled=false;
+    const ids=items.slice(0,5).map((x:any)=>String(x.id)).filter(Boolean);
+    void getCachedReels(ids).then(map=>{if(!cancelled){cachedMedia.current={...cachedMedia.current,...map};setCachedSrc(v=>({...v,...map}))}});
+    // Keep five reels available for offline playback. Only new URLs are fetched.
+    (async()=>{for(const item of items.slice(0,5)){if(cancelled)break;const id=String(item.id||'');const url=String(item.mediaUrl||'');if(!id||!url||cachedMedia.current[id])continue;await cacheReel(id,url);const map=await getCachedReels([id]);if(map[id]&&!cancelled){cachedMedia.current[id]=map[id];setCachedSrc(v=>({...v,[id]:map[id]}));}}})();
+    return()=>{cancelled=true};
+  },[items]);
   useEffect(()=>{const el=feedRef.current;if(!el)return;const onScroll=()=>{const h=el.clientHeight||1;const next=Math.max(0,Math.min(items.length-1,Math.round(el.scrollTop/h)));setIndex(next);const item=items[next];if(item)void registerView(String(item.id));};el.addEventListener('scroll',onScroll,{passive:true});return()=>el.removeEventListener('scroll',onScroll)},[items.length]);
   useEffect(()=>{if(items[0])void registerView(String(items[0].id))},[items.length]);
   useEffect(()=>{
@@ -275,8 +320,8 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   const makePrivate=async()=>{if(!reel||reel.userId!==auth.currentUser?.uid)return;try{await api.patch(`/api/reels/${reel.id}`,{status:'private'});setItems(v=>v.filter(x=>x.id!==reel.id));setMenuOpen(false)}catch{}};
   return <main className='reel-screen home-feed-screen'>
     <div className='reel-top home-feed-top'><button className={homeMode==='Following'?'tab active':'tab muted'} onClick={()=>setHomeMode('Following')}>Following</button><button className={homeMode==='For You'?'tab active':'tab muted'} onClick={()=>setHomeMode('For You')}>For You</button><button className='search-icon' onClick={onSearch}><Search/></button></div>
-    {!items.length?<div className='following-empty'><Video/><b>No videos yet</b><span>Real published reels will appear here.</span></div>:<div ref={feedRef} className='reel-feed-scroll'>{items.map((r,i)=><section className='reel-stage home-reel-stage' key={r.id} onDoubleClick={()=>void like()}>
-      <video ref={el=>{videoRefs.current[String(r.id)]=el}} src={r.mediaUrl} controls={false} autoPlay={false} muted={!soundOn} loop playsInline preload={Math.abs(i-index)<=1?'auto':'none'} className='home-reel-video' onLoadedData={e=>{if(i===index){setVideoLoading(false);const v=e.currentTarget;v.muted=!soundOn;void v.play().catch(()=>{})}}} onCanPlay={e=>{if(i===index)setVideoLoading(false)}} onPlaying={()=>{if(i===index)setVideoLoading(false)}} onWaiting={()=>{if(i===index)setVideoLoading(true)}} onError={()=>{if(i===index)setVideoLoading(false)}} onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/>{i===index&&videoLoading&&<div className='reel-video-loader' aria-label='Loading video'><span/></div>}<button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
+    {feedMessage&&<div className='feed-cache-notice'><TriangleAlert size={16}/>{feedMessage}</div>}{!items.length?<div className='following-empty'><Video/><b>{navigator.onLine?'No videos yet':'No cached videos available'}</b><span>{navigator.onLine?'Real published reels will appear here.':'Reconnect to load new reels.'}</span></div>:<div ref={feedRef} className='reel-feed-scroll'>{items.map((r,i)=><section className='reel-stage home-reel-stage' key={r.id} onDoubleClick={()=>void like()}>
+      <video ref={el=>{videoRefs.current[String(r.id)]=el}} src={cachedSrc[String(r.id)]||r.mediaUrl} controls={false} autoPlay={false} muted={!soundOn} loop playsInline preload={Math.abs(i-index)<=1?'auto':'none'} className='home-reel-video' onLoadedData={e=>{if(i===index){setVideoLoading(false);const v=e.currentTarget;v.muted=!soundOn;void v.play().catch(()=>{})}}} onCanPlay={e=>{if(i===index)setVideoLoading(false)}} onPlaying={()=>{if(i===index)setVideoLoading(false)}} onWaiting={()=>{if(i===index)setVideoLoading(true)}} onError={()=>{if(i===index)setVideoLoading(false)}} onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/>{i===index&&videoLoading&&<div className='reel-video-loader' aria-label='Loading video'><span/></div>}<button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
       <button className='reel-author-block' aria-label='Open creator profile' onClick={()=>onOpenProfile(String(r.userId))}><div className='home-dp'>{r.author?.avatar?<img src={r.author.avatar} alt=''/>:<span>{String(r.author?.name||'P').slice(0,1).toUpperCase()}</span>}<span className='home-dp-plus'>+</span></div></button>
       <div className='reel-actions reference-reel-actions'>
         <button onClick={()=>void like()} aria-label='Like video'><Heart fill={r.likedByMe?'currentColor':'none'}/><span>{r.likesCount||0}</span></button>
@@ -352,7 +397,7 @@ function CreateScreen({ mode='upload', onClose, onGoLive }: any) {
     if(!up.ok) throw new Error(String(fallback?.error||e?.message||`Upload failed (${up.status})`));
     data=fallback;
   }
-  await api.post('/api/reels',{key:data.key,mediaUrl:data.publicUrl,caption,location,hashtags:hashtags.split(/[ ,]+/).map(x=>x.replace(/^#/,'')).filter(Boolean).slice(0,5),status,visibility,allowComments});setDraftSaved(status==='draft');if(status==='published'){window.alert('Video posted successfully.');onClose()}else{window.alert('Draft saved to your profile.');onClose()}}catch(e:any){const msg=String(e?.message||'Video upload failed. Please try again.');window.alert(msg==='Failed to fetch'?'Upload connection failed. Please check your internet connection and try again.':msg)}finally{setUploading(false)}};
+  await api.post('/api/reels',{key:data.key,mediaUrl:data.publicUrl,caption,location,hashtags:hashtags.split(/[ ,]+/).map(x=>x.replace(/^#/,'')).filter(Boolean).slice(0,5),status,visibility,allowComments});setDraftSaved(status==='draft');if(status==='published'){window.alert('Video posted successfully.');onClose()}else{window.alert('Draft saved to your profile.');onClose()}}catch(e:any){const msg=reportAppError(e,'Video upload failed. Please try again.');window.alert(msg)}finally{setUploading(false)}};
  const filterStyle={filter:effect?'contrast(1.08) saturate(1.22) brightness(1.04)':'none',transform:`scaleX(${facing==='user'?-1:1}) scale(${0.84 * zoom})`};
  const startLiveCountdown = async () => {
   if (startingLive) return;
@@ -492,7 +537,7 @@ function EditProfilePage({ onBack }: any) {
   const set = (key: string, value: string) => setForm(v => ({ ...v, [key]: value }));
   const age = (()=>{ if(!form.dateOfBirth)return ''; const d=new Date(form.dateOfBirth); if(Number.isNaN(d.getTime()))return ''; const now=new Date(); let a=now.getFullYear()-d.getFullYear(); const m=now.getMonth()-d.getMonth(); if(m<0||(m===0&&now.getDate()<d.getDate()))a--; return a>0?String(a):''; })();
   const nameChanged = (()=>{ const next=`${form.firstName} ${form.lastName}`.trim(); return Boolean(next && next!==originalName); })();
-  const uploadAvatar = async (file?:File) => { if(!file||!file.type.startsWith('image/'))return; setUploading(true); try { const token=auth.currentUser?await auth.currentUser.getIdToken():''; const up=await fetch(`${API_BASE}/api/media/upload`,{method:'POST',headers:{'Content-Type':file.type,'X-File-Name':file.name,...(token?{Authorization:`Bearer ${token}`}:{})},body:file}); const data=await up.json().catch(()=>({})); if(!up.ok)throw new Error(String(data?.error||'Image upload failed')); set('avatar',String(data.publicUrl||'')); if(auth.currentUser&&data.publicUrl)await updateProfile(auth.currentUser,{photoURL:data.publicUrl}); setMessage('Profile picture uploaded. Tap Save to keep it.'); } catch(e:any){setMessage(String(e?.message||'Could not upload picture.'))} finally{setUploading(false)} };
+  const uploadAvatar = async (file?:File) => { if(!file||!file.type.startsWith('image/'))return; setUploading(true); try { const token=auth.currentUser?await auth.currentUser.getIdToken():''; const up=await fetch(`${API_BASE}/api/media/upload`,{method:'POST',headers:{'Content-Type':file.type,'X-File-Name':file.name,...(token?{Authorization:`Bearer ${token}`}:{})},body:file}); const data=await up.json().catch(()=>({})); if(!up.ok)throw new Error(String(data?.error||'Image upload failed')); set('avatar',String(data.publicUrl||'')); if(auth.currentUser&&data.publicUrl)await updateProfile(auth.currentUser,{photoURL:data.publicUrl}); setMessage('Profile picture uploaded. Tap Save to keep it.'); } catch(e:any){setMessage(reportAppError(e,'Could not upload picture.'))} finally{setUploading(false)} };
   const save = async () => { setMessage(''); if(nameChanged&&nameLockedUntil&&Date.now()<Date.parse(nameLockedUntil)){ const days=Math.ceil((Date.parse(nameLockedUntil)-Date.now())/86400000); return setMessage(`Name can be changed again in ${days} day${days===1?'':'s'}.`); } setSaving(true); try { const r=await api.put(`/api/profile/${userId}`, form); setForm(v=>({...v,...(r.data?.profile||{})})); const nextName=`${form.firstName} ${form.lastName}`.trim(); setOriginalName(nextName); if(r.data?.nameChangeLockedUntil)setNameLockedUntil(r.data.nameChangeLockedUntil); if(auth.currentUser&&nextName)await updateProfile(auth.currentUser,{displayName:nextName,photoURL:form.avatar||auth.currentUser.photoURL||null}); setMessage('Profile saved successfully.'); } catch(e:any){setMessage(String(e?.response?.data?.error||e?.message||'Could not save profile.'))} finally{setSaving(false)} };
   const editableField = (label: string, key: string, value: string, disabled=false) => <label className='field'><span className='field-label'>{label}</span><div className={`input-box ${disabled?'muted-input':''}`}><input disabled={disabled} value={value} onChange={e => set(key, e.target.value)} /></div></label>;
   const avatar=form.avatar||auth.currentUser?.photoURL||'';
