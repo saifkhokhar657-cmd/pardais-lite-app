@@ -1083,3 +1083,33 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .profile-avatar-close svg{width:22px}
 .profile-avatar-save{position:absolute;bottom:28px;padding:11px 22px;border-radius:22px;background:linear-gradient(100deg,#e14ed2,#6c42e9);color:#fff;font-weight:800;text-decoration:none}
 .user-big-avatar{cursor:pointer}
+
+
+/* V34: live discover empty state must never render as a black panel. */
+.live-page .live-empty-state{
+  position:relative!important;
+  inset:auto!important;
+  width:100%!important;
+  min-height:320px!important;
+  margin-top:13px!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:9px!important;
+  text-align:center!important;
+  padding:30px!important;
+  box-sizing:border-box!important;
+  border-radius:18px!important;
+  background:linear-gradient(145deg,#102d45 0%,#182052 48%,#24133f 100%)!important;
+  border:1px solid rgba(112,126,255,.18)!important;
+  color:#fff!important;
+}
+.live-page .live-empty-state svg{width:54px!important;height:54px!important;stroke-width:1.4!important;color:#fff!important}
+.live-page .live-empty-state b{font-size:19px!important;color:#fff!important}
+.live-page .live-empty-state span{max-width:290px!important;font-size:12px!important;line-height:1.5!important;color:rgba(255,255,255,.62)!important}
+.live-page .following-empty.live-empty-state{background:linear-gradient(145deg,#102d45 0%,#182052 48%,#24133f 100%)!important}
+
+/* Keep profile pictures strictly clipped inside their circular frame. */
+.profile-avatar,.edit-avatar,.user-big-avatar{overflow:hidden!important;clip-path:circle(50% at 50% 50%)!important}
+.profile-avatar img,.edit-avatar img,.user-big-avatar img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;border-radius:50%!important}

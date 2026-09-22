@@ -289,7 +289,9 @@ app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
     const hasCohost = members.some((m:any) => ['cohost'].includes(String(m.role || '').toLowerCase())) || acceptedInvites.some((i:any) => String(i.type || '').toLowerCase() === 'cohost');
     const displayMode = activePk ? 'PK' : hasGuest ? 'GUEST' : hasCohost ? 'ONE VS ONE' : 'SOLO';
     const host = await buildLiveHost(String(room.hostId), String(room.id));
-    return { ...room, displayMode, host: { ...host, levelBadge: `Lv.${Number(host.level || 1)}` } };
+    const level = Math.max(1, Math.min(50, Number(host.level || 1)));
+    const levelBadge = level >= 50 ? 'Ultimate' : level >= 40 ? 'Royal' : level >= 30 ? 'Diamond' : level >= 20 ? 'Gold' : level >= 10 ? 'Silver' : 'Starter';
+    return { ...room, displayMode, host: { ...host, level, levelBadge, levelTitle: `Lv.${level}` } };
   }));
   return res.json({ success: true, rooms: enriched });
 }));
