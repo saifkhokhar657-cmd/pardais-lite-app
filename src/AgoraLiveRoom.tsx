@@ -6,7 +6,7 @@ import { auth } from './firebase';
 
 type Room = { id: string; channel: string; hostId: string; title?: string; topSupporters?: any[]; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
 
-export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => void }) {
+export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; onClose: () => void; onViewProfile?: (uid: string) => void }) {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camRef = useRef<ICameraVideoTrack | null>(null);
@@ -29,6 +29,10 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const commentUserCache = useRef(new Map<string, LiveComment>());
   const [followed, setFollowed] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [availableHosts, setAvailableHosts] = useState<any[]>([]);
+  const [inviteBusy, setInviteBusy] = useState<string | null>(null);
+  const [selectedViewer, setSelectedViewer] = useState<LiveComment | null>(null);
+  const [viewerActionBusy, setViewerActionBusy] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(Number((room as any).hearts || 0));
   const [elapsed, setElapsed] = useState(0);
@@ -93,18 +97,39 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
         if (!uid) return;
         const r = await api.get(`/api/profile/${encodeURIComponent(uid)}`);
         const level = Math.max(1, Math.min(50, Number(r.data?.profile?.level ?? 1)));
-        const milestone = Math.floor(level / 10) * 10;
-        if (milestone < 10 || cancelled) return;
-        const labels: Record<number,string> = {10:'Silver Entry',20:'Gold Entry',30:'Diamond Entry',40:'Royal Entry',50:'Ultimate Entry'};
-        setEntryLevel(milestone);
-        setEntryLabel(labels[milestone] || 'Entry');
+        const tier = level >= 50 ? 50 : level >= 40 ? 40 : level >= 30 ? 30 : level >= 20 ? 20 : level >= 10 ? 10 : 1;
+        const labels: Record<number,string> = {1:'Starter Entry',10:'Silver Entry',20:'Gold Entry',30:'Diamond Entry',40:'Royal Entry',50:'Ultimate Entry'};
+        setEntryLevel(tier);
+        setEntryLabel(labels[tier]);
         setEntryVisible(true);
-        window.setTimeout(() => { if (!cancelled) setEntryVisible(false); }, 3200);
+        window.setTimeout(() => { if (!cancelled) setEntryVisible(false); }, 3000);
       } catch {}
     };
     void loadEntry();
     return () => { cancelled = true; };
   }, [connected, room.isHost]);
+
+  useEffect(() => {
+    if (!room.isHost) return;
+    const beat = () => { void api.post('/api/live/heartbeat', { roomId: room.id }).catch(() => {}); };
+    beat();
+    const timer = window.setInterval(beat, 2000);
+    return () => window.clearInterval(timer);
+  }, [room.id, room.isHost]);
+
+  useEffect(() => {
+    if (!inviteOpen || !room.isHost) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await api.get('/api/live/available-hosts');
+        if (!cancelled) setAvailableHosts(Array.isArray(r.data?.items) ? r.data.items : []);
+      } catch { if (!cancelled) setAvailableHosts([]); }
+    };
+    void load();
+    const timer = window.setInterval(load, 3000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [inviteOpen, room.isHost]);
 
   useEffect(() => {
     let disposed = false;
@@ -294,7 +319,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   };
 
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  const endBroadcast = () => { setEndConfirmOpen(false); onClose(); };
+  const endBroadcast = async () => { setEndConfirmOpen(false); try { await api.post('/api/live/end', { roomId: room.id }); } catch {} onClose(); };
   const addHeart = async () => {
     try {
       const r = await api.post('/api/live/heart', { roomId: room.id });
@@ -319,6 +344,36 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     const target = e.target as HTMLElement;
     if (target.closest('button,input,textarea')) return;
     void addHeart();
+  };
+
+  const inviteHost = async (candidate: any) => {
+    if (!candidate?.host?.id || inviteBusy) return;
+    setInviteBusy(String(candidate.host.id));
+    try {
+      await api.post('/api/live/host-invite', { roomId: room.id, toUserId: String(candidate.host.id), targetRoomId: String(candidate.roomId) });
+      setAvailableHosts(v => v.filter(x => String(x.host?.id) !== String(candidate.host.id)));
+    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Invite could not be sent.')); }
+    finally { setInviteBusy(null); }
+  };
+
+  const inviteViewerAsGuest = async () => {
+    if (!selectedViewer || viewerActionBusy) return;
+    setViewerActionBusy(true);
+    try {
+      await api.post('/api/live/guest-invite', { roomId: room.id, toUserId: selectedViewer.userId });
+      setSelectedViewer(null);
+    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Guest invite could not be sent.')); }
+    finally { setViewerActionBusy(false); }
+  };
+
+  const makeModerator = async () => {
+    if (!selectedViewer || viewerActionBusy) return;
+    setViewerActionBusy(true);
+    try {
+      await api.post('/api/moderation', { action: 'moderator', targetUserId: selectedViewer.userId, roomId: room.id });
+      setSelectedViewer(null);
+    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Moderator action failed.')); }
+    finally { setViewerActionBusy(false); }
   };
 
 
@@ -388,7 +443,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
           <div className="solo-comment-avatar">{c.avatar ? <img src={c.avatar} alt="" /> : <span>{c.name.slice(0,1).toUpperCase()}</span>}</div>
           <div className="solo-comment-copy">
             <div className="solo-comment-meta">
-              <b>{c.name}</b>
+              <button className="solo-comment-user" onClick={() => !c.isHost && setSelectedViewer(c)}>{c.name}</button>
               {c.isHost ? <span className="solo-comment-host">Host</span> : <span className="solo-comment-level">👑 Lv.{Math.max(1, c.level)}</span>}
             </div>
             <p>{c.text}</p>
@@ -428,7 +483,27 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </div>}
     {moreOpen && room.isHost && <div className="solo-more-pop"><b>More Controls</b><button onClick={() => setMoreOpen(false)}>Beauty / Effects</button><button onClick={() => setMoreOpen(false)}>Live Settings</button><button onClick={() => setMoreOpen(false)}>Close</button></div>}
 
-    {inviteOpen && <div className="solo-invite-pop"><b><UsersRound /> Invite hosts</b><span>Available hosts will appear here.</span><button onClick={() => setInviteOpen(false)}>Close</button></div>}
+    {inviteOpen && <div className="solo-invite-pop">
+      <div className="solo-invite-head"><b><UsersRound /> Invite co-host</b><button onClick={() => setInviteOpen(false)}><X /></button></div>
+      <span>Only hosts who are live solo and not in a guest seat or PK are shown.</span>
+      <div className="solo-invite-list">
+        {availableHosts.length ? availableHosts.map((candidate:any) => <div className="solo-invite-row" key={candidate.roomId}>
+          <div className="solo-invite-avatar">{candidate.host?.avatar ? <img src={candidate.host.avatar} alt=""/> : <span>{String(candidate.host?.name || 'P').slice(0,1).toUpperCase()}</span>}</div>
+          <div className="solo-invite-copy"><b>{candidate.host?.name || 'Pardais Host'}</b><small>👑 Level {Math.max(1, Number(candidate.host?.level || 1))} · Solo Live</small></div>
+          <button disabled={inviteBusy === String(candidate.host?.id)} onClick={() => void inviteHost(candidate)}>{inviteBusy === String(candidate.host?.id) ? '...' : 'Invite'}</button>
+        </div>) : <div className="solo-invite-empty">No eligible solo hosts are live right now.</div>}
+      </div>
+    </div>}
+    {selectedViewer && <div className="solo-viewer-action-backdrop" onClick={e => { if (e.target === e.currentTarget) setSelectedViewer(null); }}>
+      <div className="solo-viewer-action-card">
+        <button className="solo-viewer-action-close" onClick={() => setSelectedViewer(null)}><X /></button>
+        <div className="solo-viewer-action-avatar">{selectedViewer.avatar ? <img src={selectedViewer.avatar} alt=""/> : <span>{selectedViewer.name.slice(0,1).toUpperCase()}</span>}</div>
+        <h3>{selectedViewer.name}</h3><p>{selectedViewer.username || '@viewer'} · 👑 Lv.{Math.max(1, selectedViewer.level)}</p>
+        <button onClick={() => onViewProfile?.(selectedViewer.userId)}>Visit Profile</button>
+        <button onClick={() => void makeModerator()} disabled={viewerActionBusy}>Make Moderator</button>
+        <button className="pink-action" onClick={() => void inviteViewerAsGuest()} disabled={viewerActionBusy}>Invite as Guest</button>
+      </div>
+    </div>}
     {error && <div className="solo-error">{error}</div>}
 
     {room.isHost && endConfirmOpen && <div className="solo-end-modal" role="dialog" aria-modal="true" aria-labelledby="solo-end-title">

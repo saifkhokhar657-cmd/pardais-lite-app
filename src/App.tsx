@@ -190,7 +190,7 @@ function App() {
 
   return <div className="app-shell"><div className="phone">
     {tab === 'home' && <HomeScreen homeMode={homeMode} setHomeMode={setHomeMode} liked={liked} setLiked={setLiked} saved={saved} setSaved={setSaved} followed={followed} setFollowed={setFollowed} onSearch={() => setFullPage('findFriends')} onOpenProfile={(uid:string)=>{setViewUserId(uid);setFullPage('userProfile')}} />}
-    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} onGoLiveSetup={() => { setCreateMode('live'); setTab('create'); }} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} />}
+    {tab === 'live' && <LiveScreen room={room} setRoom={setRoom} liveMode={liveMode} setLiveMode={setLiveMode} nav={nav} onGoLiveSetup={() => { setCreateMode('live'); setTab('create'); }} liveView={liveView} setLiveView={setLiveView} activeLiveRoom={activeLiveRoom} onOpenRoom={setActiveLiveRoom} onCloseRoom={() => setActiveLiveRoom(null)} onViewProfile={(uid:string)=>{setActiveLiveRoom(null);setViewUserId(uid);setFullPage('userProfile')}} />}
     {tab === 'create' && <CreateScreen mode={createMode} camera={camera} setCamera={setCamera} onClose={() => nav('home')} onGoLive={async (options: any) => { const r = await api.post('/api/live/create', { title: 'Pardais Live', mode: options?.camOff ? 'audio' : 'video' }); setActiveLiveRoom({ ...r.data.room, agora: r.data.agora, isHost: true }); setTab('live'); }} />}
     {tab === 'inbox' && <InboxScreen />}
     {tab === 'profile' && <ProfileScreen onSettings={() => setSubPage('settings')} onEdit={() => setSubPage('editProfile')} onFollowers={() => setSubPage('followers')} onShare={() => setProfileOverlay('share')} onLevel={() => setFullPage('level')} profileTab={profileTab} setProfileTab={setProfileTab} onCreator={() => setSubPage('creator')} onAgency={() => setSubPage('agency')} onWallet={() => setSubPage('wallet')} />}
@@ -297,18 +297,22 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   </main>;
 }
 
-function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom }: any) {
+function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom, onViewProfile }: any) {
   const [rooms, setRooms] = useState<any[]>([]);
   useEffect(() => {
     let disposed = false;
     const loadRooms = async () => {
       try {
         const r = await api.get('/api/live/rooms');
-        if (!disposed) setRooms(r.data?.rooms ?? []);
+        if (!disposed) {
+          const incoming = Array.isArray(r.data?.rooms) ? r.data.rooms : [];
+          const unique = Array.from(new Map(incoming.map((x:any) => [String(x.id), x])).values());
+          setRooms(unique);
+        }
       } catch {}
     };
     void loadRooms();
-    const timer = window.setInterval(() => void loadRooms(), 1500);
+    const timer = window.setInterval(() => void loadRooms(), 1000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [activeLiveRoom]);
   if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} />;
@@ -316,7 +320,7 @@ function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, 
   return <main className='live-page'>
     <div className='live-header'><h1>Discover</h1><div className='header-actions'><button className='go-live' onClick={onGoLiveSetup}><Zap /> Go Live</button><button className='round-search'><Search /></button></div></div>
     <div className='live-tabs'>{(['For You','PK','Following'] as const).map(x => <button key={x} className={liveMode === x ? 'live-tab selected' : 'live-tab'} onClick={() => setLiveMode(x)}>{x === 'PK' ? '⚔ PK' : x}</button>)}</div>
-    {liveMode === 'PK' ? <div className='pk-discover-card'><div className='pk-live-pill'>● LIVE</div><div className='pk-timer'>PK</div><div className='pk-discover-side left'><div className='pk-discover-avatar'>⚔</div><b>PK Battles</b><span>Live</span></div><div className='pk-discover-mark'>PK</div><div className='pk-discover-side right'><div className='pk-discover-avatar'>⚡</div><b>Join a battle</b><span>Now</span></div></div> : rooms.length ? <div className='live-grid'>{rooms.map((r:any) => <button className='live-card' key={r.id} onClick={async () => { try { const join = await api.post('/api/live/join', { roomId: r.id }); onOpenRoom({ ...r, agora: join.data.agora, isHost: false }); } catch {} }}><div className='card-top'><span className='mode-logo'>{String(r.mode || 'LIVE').toUpperCase()}</span><small>LIVE</small></div><div className='host-ring'><span>{String(r.host?.name || 'P').slice(0,1)}</span></div><div className='card-name'>{r.host?.name || 'Pardais Host'}</div><div className='card-bottom'><span>{r.title || 'Pardais Live'}</span><b>🟢</b></div></button>)}</div> : <div className='following-empty' style={{position:'relative',inset:'auto',minHeight:320}}><Video/><b>No live rooms</b><span>Live rooms will appear here when real hosts go live.</span></div>}
+    {liveMode === 'PK' ? <div className='pk-discover-card'><div className='pk-live-pill'>● LIVE</div><div className='pk-timer'>PK</div><div className='pk-discover-side left'><div className='pk-discover-avatar'>⚔</div><b>PK Battles</b><span>Live</span></div><div className='pk-discover-mark'>PK</div><div className='pk-discover-side right'><div className='pk-discover-avatar'>⚡</div><b>Join a battle</b><span>Now</span></div></div> : rooms.length ? <div className='live-grid'>{rooms.map((r:any) => <button className='live-card' key={r.id} onClick={async () => { try { const join = await api.post('/api/live/join', { roomId: r.id }); onOpenRoom({ ...r, agora: join.data.agora, isHost: false }); } catch {} }}><div className='live-card-photo'>{r.host?.avatarUrl || r.host?.avatar ? <img src={r.host.avatarUrl || r.host.avatar} alt=''/> : <span>{String(r.host?.name || 'P').slice(0,1).toUpperCase()}</span>}</div><div className='live-card-gradient'/><div className='card-top'><span className='mode-logo'>{String(r.mode || 'LIVE').toUpperCase()}</span><small>● LIVE</small></div><div className='live-card-copy'><div className='card-name'>{r.host?.name || 'Pardais Host'}</div><div className='card-bottom'><span>{r.title || 'Pardais Live'}</span><b>🟢</b></div></div></button>)}</div> : <div className='following-empty' style={{position:'relative',inset:'auto',minHeight:320}}><Video/><b>No live rooms</b><span>Live rooms will appear here when real hosts go live.</span></div>}
   </main>;
 }
 

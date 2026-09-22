@@ -1012,3 +1012,45 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 @keyframes soloEntryGlow{from{transform:scale(.72);opacity:.34}to{transform:scale(1.12);opacity:.7}}
 @keyframes soloEntryPulse{from{transform:scale(.96) rotate(-2deg)}to{transform:scale(1.05) rotate(2deg)}}
 @keyframes soloEntryCrown{from{transform:translateY(4px) rotate(-6deg)}to{transform:translateY(-5px) rotate(6deg)}}
+
+/* V32 production live/discover refinements */
+.live-card{position:relative!important;padding:0!important;isolation:isolate!important;background:#111!important;min-height:184px!important}
+.live-card-photo{position:absolute;inset:0;z-index:0;background:#171326;display:grid;place-items:center;font-size:34px;font-weight:800;color:#fff}
+.live-card-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.live-card-gradient{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(4,2,10,.22) 0%,rgba(4,2,10,.08) 35%,rgba(4,2,10,.86) 100%)}
+.live-card .card-top,.live-card .live-card-copy{position:relative;z-index:2;margin:10px}
+.live-card .live-card-copy{margin-top:auto;margin-bottom:10px}
+.live-card .card-name{font-size:13px;text-shadow:0 2px 7px #000}
+.live-card .card-bottom span{color:#fff;text-shadow:0 2px 7px #000}
+.live-card .card-bottom b{background:rgba(0,0,0,.42);border-color:rgba(255,255,255,.18)}
+.live-card .card-top small{color:#fff;text-shadow:0 2px 6px #000}
+.live-card .mode-logo{color:#ff6be9;text-shadow:0 2px 6px #000}
+
+.reference-solo-live .solo-comment-user{border:0;background:transparent;padding:0;margin:0;color:#fff;font:inherit;font-weight:800;text-align:left;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reference-solo-live .solo-invite-pop{left:12px!important;right:12px!important;bottom:84px!important;max-height:58vh!important;overflow:hidden!important;padding:13px!important;background:rgba(13,11,22,.97)!important;backdrop-filter:blur(16px)!important;z-index:40!important}
+.reference-solo-live .solo-invite-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.reference-solo-live .solo-invite-head button{width:34px;height:34px;padding:0;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#fff}
+.reference-solo-live .solo-invite-list{overflow:auto;display:flex;flex-direction:column;gap:8px;margin-top:5px;min-height:0}
+.reference-solo-live .solo-invite-row{display:flex;align-items:center;gap:9px;padding:8px;border-radius:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+.reference-solo-live .solo-invite-avatar{width:42px;height:42px;min-width:42px;border-radius:50%;overflow:hidden;background:#29213a;display:grid;place-items:center;font-weight:800}
+.reference-solo-live .solo-invite-avatar img{width:100%;height:100%;object-fit:cover}
+.reference-solo-live .solo-invite-copy{flex:1;min-width:0}.reference-solo-live .solo-invite-copy b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reference-solo-live .solo-invite-copy small{display:block;margin-top:3px;color:rgba(255,255,255,.58);font-size:9px}
+.reference-solo-live .solo-invite-row>button{border:0;border-radius:16px;padding:8px 13px;background:linear-gradient(100deg,#d74bd5,#5d86ff);color:#fff;font-weight:800;font-size:11px}
+.reference-solo-live .solo-invite-row>button:disabled{opacity:.5}
+.reference-solo-live .solo-invite-empty{padding:24px 8px;text-align:center;color:rgba(255,255,255,.55);font-size:12px}
+.reference-solo-live .solo-viewer-action-backdrop{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,.55);backdrop-filter:blur(7px);display:flex;align-items:flex-end;justify-content:center;padding:14px}
+.reference-solo-live .solo-viewer-action-card{position:relative;width:min(390px,100%);background:rgba(21,19,31,.98);border:1px solid rgba(255,255,255,.12);border-radius:22px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.55);text-align:center}
+.reference-solo-live .solo-viewer-action-close{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);border:0;color:#fff}
+.reference-solo-live .solo-viewer-action-avatar{width:66px;height:66px;border-radius:50%;overflow:hidden;margin:0 auto 9px;border:2px solid #b84de1;background:#272037;display:grid;place-items:center;font-size:25px;font-weight:800}.reference-solo-live .solo-viewer-action-avatar img{width:100%;height:100%;object-fit:cover}
+.reference-solo-live .solo-viewer-action-card h3{margin:0;font-size:18px}.reference-solo-live .solo-viewer-action-card p{margin:4px 0 15px;color:rgba(255,255,255,.56);font-size:11px}
+.reference-solo-live .solo-viewer-action-card>button:not(.solo-viewer-action-close){width:100%;height:45px;border-radius:13px;margin-top:8px;border:1px solid rgba(255,255,255,.12);background:#201d2c;color:#fff;font-weight:700}.reference-solo-live .solo-viewer-action-card>button.pink-action{background:linear-gradient(100deg,#d74bd5,#5d86ff);border:0}
+.reference-solo-live .entry-level-1{color:#f0a5ff}.reference-solo-live .entry-level-1 .solo-entry-glow{background:#bd4de5}.reference-solo-live .entry-level-1 .solo-entry-ring{color:#e35cff}
+
+
+/* V32 production live/discover hardening */
+.live-grid{align-items:stretch}
+.live-card{height:184px!important;min-height:184px!important;overflow:hidden!important}
+.live-card-photo{overflow:hidden!important}
+.live-card-photo img{object-fit:cover!important;object-position:center!important}
+.reference-solo-live .solo-entry-overlay{z-index:60!important}
+.reference-solo-live .solo-entry-ring,.reference-solo-live .solo-entry-title,.reference-solo-live .solo-entry-level{will-change:transform,opacity}

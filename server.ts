@@ -246,12 +246,76 @@ async function buildLiveHost(hostId: string, roomId?: string) {
 }
 
 app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
-  const rooms = await list('live_rooms', { status: 'live' }, 50);
-  const enriched = await Promise.all(rooms.map(async (room: any) => ({ ...room, host: await buildLiveHost(String(room.hostId), String(room.id)) })));
+  const rooms = await list('live_rooms', { status: 'live' }, 200);
+  const nowMs = Date.now();
+  // A host can only have one discover card. Ignore stale rooms and keep the
+  // newest heartbeat for each host so old/stacked cards cannot remain visible.
+  const latestByHost = new Map<string, any>();
+  for (const room of rooms) {
+    if (room?.endedAt) continue;
+    const stamp = Date.parse(String(room.updatedAt || room.createdAt || ''));
+    if (!Number.isFinite(stamp) || nowMs - stamp > 8000) continue;
+    const hostKey = String(room.hostId || room.id);
+    const previous = latestByHost.get(hostKey);
+    const previousStamp = previous ? Date.parse(String(previous.updatedAt || previous.createdAt || '')) : -1;
+    if (!previous || stamp > previousStamp) latestByHost.set(hostKey, room);
+  }
+  const active = Array.from(latestByHost.values());
+  const enriched = await Promise.all(active.map(async (room: any) => ({ ...room, host: await buildLiveHost(String(room.hostId), String(room.id)) })));
   return res.json({ success: true, rooms: enriched });
+}));
+app.post('/api/live/heartbeat', asyncRoute(async (req, res) => {
+  const roomId = String(req.body?.roomId || '');
+  const room: any = await get('live_rooms', roomId);
+  if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
+  assertSelf(req, String(room.hostId));
+  await update('live_rooms', roomId, { updatedAt: now() });
+  return res.json({ success: true, status: 'live' });
+}));
+app.get('/api/live/available-hosts', asyncRoute(async (req, res) => {
+  const me = req.user!.uid;
+  const rooms = await list('live_rooms', { status: 'live' }, 100);
+  const nowMs = Date.now();
+  const candidates: any[] = [];
+  const seenHosts = new Set<string>();
+  for (const room of rooms) {
+    const hostKey = String(room.hostId || '');
+    if (!hostKey || hostKey === String(me) || seenHosts.has(hostKey)) continue;
+    const stamp = Date.parse(String(room.updatedAt || room.createdAt || ''));
+    if (!Number.isFinite(stamp) || nowMs - stamp > 8000 || room.endedAt) continue;
+    const members: any[] = await list('live_members', { roomId: String(room.id) }, 100);
+    const occupied = members.some(m => ['guest','cohost','pk'].includes(String(m.role || '').toLowerCase()));
+    const pkRows: any[] = await list('pk_matches', { hostId: hostKey }, 50);
+    const pkActive = pkRows.some(m => {
+      const status = String(m.status || '').toLowerCase();
+      if (['ended','completed','cancelled','rejected'].includes(status)) return false;
+      const ids = [m.hostId, m.opponentId, m.challengerId, m.toUserId, m.targetUserId, m.guestId].filter(Boolean).map(String);
+      return ids.includes(hostKey) || !ids.length;
+    });
+    if (occupied || pkActive) continue;
+    seenHosts.add(hostKey);
+    const host = await buildLiveHost(hostKey, String(room.id));
+    candidates.push({ roomId: room.id, host, title: room.title || 'Pardais Live', mode: room.mode || 'video', viewerCount: Number(room.viewerCount || 0), status: 'solo', canInvite: true });
+  }
+  return res.json({ success: true, items: candidates });
+}));
+app.get('/api/live/viewers/:roomId', asyncRoute(async (req, res) => {
+  const roomId = String(req.params.roomId);
+  const room: any = await get('live_rooms', roomId);
+  if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
+  const rows: any[] = await list('live_members', { roomId }, 200);
+  const viewers = await Promise.all(rows.filter(m => String(m.role || 'audience') === 'audience' && String(m.userId) !== String(room.hostId)).map(async m => {
+    const u: any = await get('users', String(m.userId));
+    const p: any = await get('profiles', String(m.userId));
+    return { id: String(m.userId), name: p?.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : (u?.name || 'Pardais User'), username: p?.username || u?.username || '', avatar: p?.avatar || u?.avatar || '', level: Number(u?.level || p?.level || 1), role: 'audience' };
+  }));
+  return res.json({ success: true, items: viewers });
 }));
 app.post('/api/live/create', asyncRoute(async (req, res) => {
   const hostId = req.user!.uid;
+  // Prevent duplicate/stale discover cards when a host starts a new broadcast.
+  const existingLive = await list('live_rooms', { status: 'live', hostId }, 50);
+  for (const oldRoom of existingLive) await update('live_rooms', String(oldRoom.id), { status: 'ended', endedAt: now() });
   const channel = `pardais_${hostId}_${Date.now().toString(36)}`;
   const room = { hostId, title: String(req.body?.title || 'Pardais Live'), mode: req.body?.mode || 'audio', status: 'live', provider: 'agora', channel, hearts: 0, viewerCount: 0, createdAt: now(), updatedAt: now() };
   const id = await add('live_rooms', room);
@@ -286,7 +350,17 @@ app.post('/api/live/token', asyncRoute(async (req, res) => {
   if (!member && role !== 'host') return res.status(403).json({ error: 'join the live room first' });
   const token = buildRtcToken(room.channel, userId, role); return res.json({ success: true, channel: room.channel, role, ...token });
 }));
-app.post('/api/live/end', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const room: any = await get('live_rooms', roomId); if (!room) return res.status(404).json({ error: 'room not found' }); assertSelf(req, String(room.hostId)); await update('live_rooms', roomId, { status: 'ended', endedAt: now() }); return res.json({ success: true }); }));
+app.post('/api/live/end', asyncRoute(async (req, res) => {
+  const roomId = String(req.body?.roomId || '');
+  const room: any = await get('live_rooms', roomId);
+  if (!room) return res.status(404).json({ error: 'room not found' });
+  assertSelf(req, String(room.hostId));
+  // End every live room owned by this host so duplicate/stale cards disappear together.
+  const hostRooms = await list('live_rooms', { status: 'live', hostId: String(room.hostId) }, 50);
+  for (const liveRoom of hostRooms) await update('live_rooms', String(liveRoom.id), { status: 'ended', endedAt: now() });
+  await update('live_rooms', roomId, { status: 'ended', endedAt: now() });
+  return res.json({ success: true });
+}));
 app.post('/api/live/leave', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const rows = await list('live_members', { roomId, userId: req.user!.uid }, 10); for (const row of rows) await remove('live_members', row.id); if (rows.length) { const roomRef = db.collection('live_rooms').doc(roomId); await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Math.max(0, Number(snap.data()?.viewerCount || 0) - 1), updatedAt: now() }); }); } return res.json({ success: true }); }));
 app.post('/api/live/heart', asyncRoute(async (req, res) => { const roomId = String(req.body?.roomId || ''); const ref = db.collection('live_rooms').doc(roomId); await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(ref); if (!snap.exists || snap.data()?.status !== 'live') throw new Error('room not live'); const current = Number(snap.data()?.hearts || 0); tx.update(ref, { hearts: current + 1, updatedAt: now() }); }); return res.json({ success: true }); }));
 
@@ -313,6 +387,41 @@ app.post('/api/comments', asyncRoute(async(req,res)=>{const text=String(req.body
 app.get('/api/comments/:targetId', asyncRoute(async(req,res)=>res.json({success:true,items:await list('comments',{targetId:String(req.params.targetId)},100)})));
 app.post('/api/moderation', asyncRoute(async(req,res)=>{const action=String(req.body?.action||'');if(!['moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});const targetUserId=String(req.body?.targetUserId||'');const id=await add('moderation_actions',{...req.body,actorId:req.user!.uid,targetUserId,action,status:action==='report'?'pending':'completed'});if(action==='block')await add('blocks',{blockerId:req.user!.uid,blockedUserId:targetUserId});return res.status(201).json({success:true,actionId:id,action});}));
 app.post('/api/invites', asyncRoute(async(req,res)=>{const id=await add('invites',{...req.body,fromUserId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
+app.post('/api/live/host-invite', asyncRoute(async(req,res)=>{
+  const roomId = String(req.body?.roomId || '');
+  const toUserId = String(req.body?.toUserId || '');
+  const room: any = await get('live_rooms', roomId);
+  if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
+  assertSelf(req, String(room.hostId));
+  if (!toUserId || toUserId === String(room.hostId)) return res.status(400).json({ error: 'invalid invite target' });
+  const targetRooms: any[] = await list('live_rooms', { status: 'live', hostId: toUserId }, 10);
+  const nowMs = Date.now();
+  const targetRoom = targetRooms.find((r:any) => {
+    const stamp = Date.parse(String(r.updatedAt || r.createdAt || ''));
+    return Number.isFinite(stamp) && nowMs - stamp <= 8000;
+  });
+  if (!targetRoom) return res.status(400).json({ error: 'host is no longer live' });
+  const targetMembers: any[] = await list('live_members', { roomId: String(targetRoom.id) }, 100);
+  const occupied = targetMembers.some(m => ['guest','cohost','pk'].includes(String(m.role || '').toLowerCase()));
+  if (occupied) return res.status(409).json({ error: 'host is already in another seat or PK' });
+  const duplicate = (await list('invites', { roomId, toUserId, status: 'pending', type: 'cohost' }, 5))[0];
+  if (duplicate) return res.json({ success: true, inviteId: duplicate.id, status: 'pending' });
+  const id = await add('invites', { roomId, toUserId, fromUserId: req.user!.uid, type: 'cohost', status: 'pending', role: 'cohost' });
+  return res.status(201).json({ success: true, inviteId: id, status: 'pending' });
+}));
+app.post('/api/live/guest-invite', asyncRoute(async(req,res)=>{
+  const roomId = String(req.body?.roomId || '');
+  const toUserId = String(req.body?.toUserId || '');
+  const room: any = await get('live_rooms', roomId);
+  if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
+  assertSelf(req, String(room.hostId));
+  const rows: any[] = await list('live_members', { roomId, userId: toUserId }, 5);
+  if (!rows.length) return res.status(400).json({ error: 'viewer is no longer in this live' });
+  const duplicate = (await list('invites', { roomId, toUserId, status: 'pending', type: 'guest' }, 5))[0];
+  if (duplicate) return res.json({ success: true, inviteId: duplicate.id, status: 'pending' });
+  const id = await add('invites', { roomId, toUserId, fromUserId: req.user!.uid, type: 'guest', status: 'pending', role: 'guest' });
+  return res.status(201).json({ success: true, inviteId: id, status: 'pending' });
+}));
 app.post('/api/invites/:id/respond', asyncRoute(async(req,res)=>{const invite:any=await get('invites',String(req.params.id));if(!invite)return res.status(404).json({error:'invite not found'});if(invite.toUserId!==req.user!.uid)return res.status(403).json({error:'not your invite'});const status=String(req.body?.status||'');if(!['accepted','rejected','cancelled'].includes(status))return res.status(400).json({error:'invalid invite response'});await update('invites',String(req.params.id),{status});return res.json({success:true,inviteId:String(req.params.id),status});}));
 app.post('/api/pk/invites', asyncRoute(async(req,res)=>{const id=await add('pk_invites',{...req.body,fromUserId:req.user!.uid,type:'pk',status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
 app.get('/api/notifications/:userId', asyncRoute(async(req,res)=>{ assertSelf(req,String(req.params.userId)); return res.json({success:true,items:await list('notifications',{userId:String(req.params.userId)},100)}); }));
