@@ -435,3 +435,41 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-more-pop b{padding:5px 7px;font-size:14px}.reference-solo-live .solo-more-pop button{border:0;border-radius:10px;padding:10px;background:rgba(255,255,255,.08);color:#fff;text-align:left}
 @media(max-width:430px){
 .reference-solo-live .solo-live-top{top:10px;left:10px;right:9px}.reference-solo-live .solo-avatar-wrap{width:50px;height:50px}.reference-solo-live .solo-name-row b{font-size:16px;max-width:145px}.reference-solo-live .solo-supporter{width:28px;height:28px}.reference-solo-live .solo-top-actions button{width:38px;height:38px}.reference-solo-live .solo-stats{top:78px;left:10px;right:10px;gap:5px}.reference-solo-live .solo-stats span{height:43px}.reference-solo-live .solo-comment-bar{left:14px;right:14px;bottom:78px}.reference-solo-live .solo-bottom-actions{left:10px;right:10px;gap:5px}.reference-solo-live .solo-invite{height:50px;padding:0 14px;font-size:15px}.reference-solo-live .solo-round{width:50px;height:50px}.reference-solo-live .solo-camera-off-avatar{width:54vw;height:54vw}}
+
+/* V20 — responsive host controls + centered camera/mic status + no fake host data */
+.reference-solo-live .solo-live-top{z-index:8}
+.reference-solo-live .solo-stats{top:92px;z-index:7}
+.reference-solo-live .solo-camera-off{position:absolute!important;inset:0!important;z-index:4!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;text-align:center!important;pointer-events:none!important;padding:120px 20px 150px!important}
+.reference-solo-live .solo-camera-off-avatar{flex:none!important}
+.reference-solo-live .solo-camera-off b,.reference-solo-live .solo-camera-off span{display:block!important}
+.reference-solo-live .solo-bottom-actions{display:grid!important;grid-template-columns:minmax(82px,1.35fr) repeat(5,minmax(0,1fr));align-items:center;gap:5px!important;overflow:visible!important}
+.reference-solo-live .solo-bottom-actions>*{min-width:0!important}
+.reference-solo-live .solo-invite{width:100%!important;padding:0 10px!important;justify-content:center!important;height:48px!important;font-size:14px!important}
+.reference-solo-live .solo-round{width:48px!important;height:48px!important;justify-self:stretch}
+.reference-solo-live .solo-round svg{width:21px!important;height:21px!important}
+.reference-solo-live .solo-comment-bar{bottom:72px!important;height:50px!important}
+@media(max-width:390px){
+  .reference-solo-live .solo-live-top{left:7px;right:7px;gap:4px}
+  .reference-solo-live .solo-avatar-wrap{width:46px;height:46px}
+  .reference-solo-live .solo-name-row b{font-size:14px;max-width:115px}
+  .reference-solo-live .solo-sub-row{font-size:10px;gap:3px}
+  .reference-solo-live .solo-level{padding:2px 4px}
+  .reference-solo-live .solo-supporters{min-width:45px}
+  .reference-solo-live .solo-supporter{width:24px;height:24px}
+  .reference-solo-live .solo-top-actions button{width:34px;height:34px}
+  .reference-solo-live .solo-stats{top:76px;left:7px;right:7px;gap:4px}
+  .reference-solo-live .solo-stats span{height:40px;font-size:12px}
+  .reference-solo-live .solo-stats span b{font-size:13px}
+  .reference-solo-live .solo-stats span small{font-size:8px}
+  .reference-solo-live .solo-bottom-actions{left:7px;right:7px;bottom:9px;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px!important}
+  .reference-solo-live .solo-invite{height:46px!important;padding:0!important;font-size:0!important;border-radius:50%!important}
+  .reference-solo-live .solo-invite svg{width:22px!important;height:22px!important}
+  .reference-solo-live .solo-round{width:46px!important;height:46px!important}
+  .reference-solo-live .solo-comment-bar{left:9px;right:9px;bottom:65px!important;height:47px!important}
+  .reference-solo-live .solo-camera-off{padding:105px 15px 130px!important}
+  .reference-solo-live .solo-camera-off-avatar{width:48vw!important;height:48vw!important;max-width:210px!important;max-height:210px!important}
+}
+
+/* V20 status indicator */
+.reference-solo-live .solo-status-icon{width:82px;height:82px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:rgba(20,18,28,.72);display:grid;place-items:center;margin:0 auto 14px;box-shadow:0 0 0 4px rgba(168,85,247,.45)}
+.reference-solo-live .solo-status-icon svg{width:38px;height:38px}

@@ -223,9 +223,31 @@ app.post('/api/reels/:id/like', asyncRoute(async(req,res)=>{
 }));
 app.get('/api/profile/:userId/stats', asyncRoute(async(req,res)=>{ const uid=String(req.params.userId); const followers=await list('follows',{followingId:uid},5000), following=await list('follows',{followerId:uid},5000), reels=await list('reels',{userId:uid},5000); let likes=0; for(const r of reels) likes += (await list('reel_likes',{reelId:r.id},5000)).length; return res.json({success:true,stats:{followers:followers.length,following:following.length,likes}}); }));
 
+async function buildLiveHost(hostId: string, roomId?: string) {
+  const [u, p] = await Promise.all([get('users', hostId), get('profiles', hostId)]);
+  const gifts = roomId ? await list('gift_transactions', { roomId }, 5000) : [];
+  const totals = new Map<string, number>();
+  for (const g of gifts as any[]) totals.set(String(g.senderId), (totals.get(String(g.senderId)) || 0) + Number(g.coins || 0) * Math.max(1, Number(g.quantity || 1)));
+  const supporterIds = [...totals.entries()].sort((a,b) => b[1] - a[1]).slice(0,3).map(([id]) => id);
+  const supporters = await Promise.all(supporterIds.map(async id => {
+    const su: any = await get('users', id);
+    const sp: any = await get('profiles', id);
+    return { id, name: sp?.firstName ? `${sp.firstName} ${sp.lastName || ''}`.trim() : (su?.name || 'Pardais User'), username: sp?.username || su?.username || '', avatar: sp?.avatar || su?.avatar || '', coins: totals.get(id) || 0 };
+  }));
+  return {
+    id: hostId,
+    name: u?.name || (p?.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : 'Pardais User'),
+    username: p?.username || u?.username || hostId,
+    avatar: p?.avatar || u?.avatar || '',
+    avatarUrl: p?.avatar || u?.avatar || '',
+    level: Number(u?.level || 1),
+    topSupporters: supporters
+  };
+}
+
 app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
   const rooms = await list('live_rooms', { status: 'live' }, 50);
-  const enriched = await Promise.all(rooms.map(async (room: any) => ({ ...room, host: await get('users', String(room.hostId)) })));
+  const enriched = await Promise.all(rooms.map(async (room: any) => ({ ...room, host: await buildLiveHost(String(room.hostId), String(room.id)) })));
   return res.json({ success: true, rooms: enriched });
 }));
 app.post('/api/live/create', asyncRoute(async (req, res) => {
@@ -235,7 +257,8 @@ app.post('/api/live/create', asyncRoute(async (req, res) => {
   const id = await add('live_rooms', room);
   const token = buildRtcToken(channel, hostId, 'host');
   await add('live_members', { roomId: id, userId: hostId, role: 'host', agoraUid: token.uid });
-  return res.status(201).json({ success: true, room: { id, ...room }, agora: { ...token, channel } });
+  const host = await buildLiveHost(hostId, id);
+  return res.status(201).json({ success: true, room: { id, ...room, host, topSupporters: host.topSupporters }, agora: { ...token, channel } });
 }));
 app.post('/api/live/join', asyncRoute(async (req, res) => {
   const roomId = String(req.body?.roomId || '');
@@ -251,7 +274,8 @@ app.post('/api/live/join', asyncRoute(async (req, res) => {
     await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Number(snap.data()?.viewerCount || 0) + 1, updatedAt: now() }); });
   }
   const token = buildRtcToken(room.channel, userId, room.hostId === userId ? 'host' : 'audience');
-  return res.json({ success: true, membership, room, agora: { ...token, channel: room.channel } });
+  const host = await buildLiveHost(String(room.hostId), roomId);
+  return res.json({ success: true, membership, room: { ...room, host, topSupporters: host.topSupporters }, agora: { ...token, channel: room.channel } });
 }));
 app.post('/api/live/token', asyncRoute(async (req, res) => {
   const roomId = String(req.body?.roomId || ''); const room: any = await get('live_rooms', roomId);

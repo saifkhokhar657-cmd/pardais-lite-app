@@ -29,9 +29,11 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [cameraFacing, setCameraFacing] = useState<'front'|'back'>('front');
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
-  const hostId = room.host?.username || room.host?.id || room.hostId || '1000259813';
-  const hostLevel = room.host?.level || 29;
+  const hostId = room.host?.username || room.host?.id || room.hostId || 'unknown';
+  const hostLevel = Number(room.host?.level ?? 0);
   const hostAvatar = room.host?.avatarUrl || room.host?.avatar || '';
+  const hasRealHostData = Boolean(room.host?.id || room.host?.username || room.host?.name);
+  const displayHostName = hasRealHostData ? hostName : 'Loading host…';
 
   useEffect(() => {
     const timer = window.setInterval(() => setElapsed(v => v + 1), 1000);
@@ -144,14 +146,14 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     <header className="solo-live-top">
       <div className="solo-host-info">
         <div className="solo-avatar-wrap">
-          {hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{hostName.slice(0,1).toUpperCase()}</span>}
+          {hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}
         </div>
         <div className="solo-host-text">
-          <div className="solo-name-row"><b>{hostName}</b><Verified className="solo-verified" fill="currentColor" />{!room.isHost && <button onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button>}</div>
+          <div className="solo-name-row"><b>{displayHostName}</b><Verified className="solo-verified" fill="currentColor" />{!room.isHost && <button onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button>}</div>
           <div className="solo-sub-row"><span>@{String(hostId).replace(/^@/, '')}</span><span className="solo-level">👑 Level {hostLevel}</span></div>
         </div>
       </div>
-      <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || ['A','S','M'][i]).slice(0,1)}</span>}</div>)}</div>
+      <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || '').slice(0,1).toUpperCase()}</span>}</div>)}</div>
       <div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
         <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
@@ -164,7 +166,12 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
-    {!cameraOn && room.isHost && <div className="solo-camera-off"><div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{hostName.slice(0,1).toUpperCase()}</span>}</div><b>Camera is off</b><span>Your audio is live</span></div>}
+    {room.isHost && (!cameraOn || !micOn) && <div className="solo-camera-off">
+      {cameraOn ? <div className="solo-status-icon"><MicOff /></div> : <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+      {!cameraOn && <b>Camera is off</b>}
+      {cameraOn && !micOn && <b>Microphone is off</b>}
+      <span>{micOn ? 'Your audio is live' : 'Your microphone is off'}</span>
+    </div>}
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
     <div className="solo-comments">
