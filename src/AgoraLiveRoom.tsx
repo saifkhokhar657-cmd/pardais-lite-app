@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type TouchEvent, type MouseEvent } from 'r
 import AgoraRTC, { type IAgoraRTCClient, type IAgoraRTCRemoteUser, type ICameraVideoTrack, type IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
 import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift } from 'lucide-react';
 import { api } from './api';
+import { auth } from './firebase';
 
 type Room = { id: string; channel: string; hostId: string; title?: string; topSupporters?: any[]; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
 
@@ -22,7 +23,10 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [selectedGift, setSelectedGift] = useState<any>(null);
   const [floatingHearts, setFloatingHearts] = useState<number[]>([]);
   const [comment, setComment] = useState('');
-  const [comments, setComments] = useState<string[]>([]);
+  type LiveComment = { id: string; userId: string; name: string; username?: string; avatar?: string; level: number; text: string; isHost?: boolean };
+  const [comments, setComments] = useState<LiveComment[]>([]);
+  const commentsScrollRef = useRef<HTMLDivElement | null>(null);
+  const commentUserCache = useRef(new Map<string, LiveComment>());
   const [followed, setFollowed] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [liked, setLiked] = useState(false);
@@ -178,11 +182,71 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     try { await navigator.share?.({ title: 'Pardais Lite Live', text: room.title || 'Join my live stream', url: window.location.href }); } catch {}
   };
 
-  const submitComment = () => {
+  const loadLiveComments = async () => {
+    try {
+      const r = await api.get(`/api/comments/${encodeURIComponent(room.id)}`);
+      const raw = Array.isArray(r.data?.items) ? r.data.items : [];
+      const mapped: LiveComment[] = [];
+      for (const item of raw.slice(-30)) {
+        const uid = String(item.userId || '');
+        let cached = commentUserCache.current.get(uid);
+        if (!cached) {
+          try {
+            const [uRes, pRes] = await Promise.all([
+              api.get(`/api/users/${encodeURIComponent(uid)}`),
+              api.get(`/api/profile/${encodeURIComponent(uid)}`),
+            ]);
+            const u = uRes.data?.user || {};
+            const pr = pRes.data?.profile || {};
+            cached = {
+              id: uid,
+              userId: uid,
+              name: pr.name || u.name || u.displayName || 'Pardais User',
+              username: pr.username || u.username || '',
+              avatar: pr.avatar || u.avatar || '',
+              level: Math.max(1, Number(pr.level ?? u.level ?? 1)),
+              text: '',
+            };
+            commentUserCache.current.set(uid, cached);
+          } catch {
+            cached = { id: uid, userId: uid, name: 'Pardais User', username: '', avatar: '', level: 1, text: '' };
+            commentUserCache.current.set(uid, cached);
+          }
+        }
+        mapped.push({ ...cached, id: String(item.id || `${uid}-${item.createdAt || item.text}`), text: String(item.text || ''), isHost: uid === String(room.hostId || room.host?.id || '') });
+      }
+      const el = commentsScrollRef.current;
+      const wasNearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 70;
+      setComments(mapped);
+      if (wasNearBottom) {
+        window.requestAnimationFrame(() => {
+          const node = commentsScrollRef.current;
+          if (node) node.scrollTop = node.scrollHeight;
+        });
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    void loadLiveComments();
+    const timer = window.setInterval(() => void loadLiveComments(), 2500);
+    return () => window.clearInterval(timer);
+  }, [room.id]);
+
+  const submitComment = async () => {
     const value = comment.trim();
     if (!value) return;
-    setComments(v => [...v.slice(-2), value]);
+    const uid = auth.currentUser?.uid || String(room.hostId || '');
+    const cached = commentUserCache.current.get(uid);
+    const optimistic: LiveComment = cached
+      ? { ...cached, id: `local-${Date.now()}`, text: value, isHost: room.isHost || uid === String(room.hostId) }
+      : { id: `local-${Date.now()}`, userId: uid, name: room.isHost ? hostName : (auth.currentUser?.displayName || 'Pardais User'), username: '', avatar: room.isHost ? hostAvatar : '', level: room.isHost ? Math.max(1, hostLevel) : 1, text: value, isHost: room.isHost };
+    setComments(v => [...v, optimistic].slice(-30));
     setComment('');
+    try {
+      await api.post('/api/comments', { targetId: room.id, text: value });
+      void loadLiveComments();
+    } catch {}
   };
 
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -256,8 +320,19 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
 
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
-    <div className="solo-comments">
-      {comments.map((c, i) => <div key={`${c}-${i}`}><b>Viewer</b> {c}</div>)}
+    <div className="solo-comments" ref={commentsScrollRef} aria-label="Live comments">
+      {comments.map((c) => (
+        <div className="solo-comment-item" key={c.id}>
+          <div className="solo-comment-avatar">{c.avatar ? <img src={c.avatar} alt="" /> : <span>{c.name.slice(0,1).toUpperCase()}</span>}</div>
+          <div className="solo-comment-copy">
+            <div className="solo-comment-meta">
+              <b>{c.name}</b>
+              {c.isHost ? <span className="solo-comment-host">Host</span> : <span className="solo-comment-level">👑 Lv.{Math.max(1, c.level)}</span>}
+            </div>
+            <p>{c.text}</p>
+          </div>
+        </div>
+      ))}
     </div>
 
     <div className="solo-comment-bar">
