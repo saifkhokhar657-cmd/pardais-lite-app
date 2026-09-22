@@ -66,7 +66,7 @@ app.get('/api/health', async (_req, res) => {
   // Keep this endpoint public and diagnostic. It distinguishes a healthy API
   // process from a deployed API whose Firebase credentials/database are broken.
   if (!firebaseCredentialsConfigured) {
-    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase server credentials are not configured on the API server.', firebase: 'missing-service-account', time: now() });
+    return res.status(503).json({ ok: false, app: 'Pardais Lite', error: 'Firebase server credentials are not configured on the API server.', firebase: 'missing-service-account', acceptedVariables: ['FIREBASE_SERVICE_ACCOUNT_JSON','FIREBASE_SERVICE_ACCOUNT_BASE64','FIREBASE_SERVICE_ACCOUNT','FIREBASE_ADMIN_JSON','FIREBASE_CLIENT_EMAIL+FIREBASE_PRIVATE_KEY','GOOGLE_APPLICATION_CREDENTIALS'], time: now() });
   }
   try {
     await db.collection('_system').doc('health').get();
@@ -578,7 +578,15 @@ if (process.env.NODE_ENV === 'production') {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = Number(err?.status || 500);
   console.error(err);
-  res.status(status).json({ error: status === 500 ? 'Internal server error' : String(err?.message || 'Request failed') });
+  if (status !== 500) return res.status(status).json({ error: String(err?.message || 'Request failed') });
+  const code = String(err?.code || '').toUpperCase();
+  let message = 'Internal server error';
+  if (code.includes('PERMISSION_DENIED')) message = 'Database permission error. Check Firebase Admin credentials and Firestore access.';
+  else if (code.includes('UNAUTHENTICATED') || code.includes('INVALID_CREDENTIAL')) message = 'Firebase authentication credentials are invalid or expired.';
+  else if (code.includes('FAILED_PRECONDITION')) message = 'Firestore configuration/index error. Check the Firebase project and Firestore setup.';
+  else if (code.includes('UNAVAILABLE') || code.includes('DEADLINE_EXCEEDED')) message = 'Firebase/Firestore is temporarily unavailable. Please try again.';
+  else if (!firebaseCredentialsConfigured) message = 'Firebase server credentials are not configured on the API server.';
+  res.status(500).json({ error: message, code: code || undefined });
 });
 
 app.listen(port, '0.0.0.0', () => console.log(`Pardais Lite API listening on ${port}`));
