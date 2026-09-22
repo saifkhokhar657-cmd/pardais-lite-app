@@ -784,8 +784,8 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   height:100%!important;
   object-fit:cover!important;
   object-position:center!important;
-  filter:blur(28px) brightness(.48)!important;
-  transform:scale(1.08)!important;
+  filter:none!important;
+  transform:none!important;
 }
 .reference-solo-live .solo-camera-off-backdrop span{
   position:absolute!important;
@@ -811,9 +811,9 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-camera-off-center .solo-camera-off-avatar{
   display:grid!important;
   place-items:center!important;
-  width:min(52vw,230px)!important;
-  height:min(52vw,230px)!important;
-  margin:0 auto 18px!important;
+  width:0!important;
+  height:0!important;
+  margin:0!important;
   flex:none!important;
   overflow:hidden!important;
   border-radius:50%!important;
@@ -821,12 +821,10 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   border:4px solid rgba(255,255,255,.96)!important;
   box-shadow:0 0 0 5px rgba(168,85,247,.72),0 14px 50px rgba(0,0,0,.5)!important;
 }
-.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar img{
-  width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important;filter:none!important;transform:none!important;
-}
-.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar span{
-  display:grid!important;place-items:center!important;width:100%!important;height:100%!important;color:#fff!important;background:#29222f!important;font-size:84px!important;font-weight:900!important;
-}
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar img{display:none!important;width:0!important;height:0!important;}
+
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar span{display:none!important;}
+
 .reference-solo-live .solo-camera-off-center .solo-status-icon{
   width:58px!important;height:58px!important;border-radius:50%!important;display:grid!important;place-items:center!important;
   margin:0 auto 12px!important;background:rgba(225,47,54,.92)!important;color:#fff!important;border:2px solid rgba(255,255,255,.8)!important;box-shadow:0 8px 25px rgba(0,0,0,.4)!important;
@@ -847,3 +845,15 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   .reference-solo-live .solo-camera-off-center b{font-size:18px!important}
   .reference-solo-live .solo-camera-off-center>span{font-size:13px!important}
 }
+
+
+/* V28 — full-screen camera-off DP + compact Go Live countdown */
+.reference-solo-live .solo-camera-off-stage{z-index:7!important;}
+.reference-solo-live .solo-camera-off-backdrop img{object-fit:cover!important;object-position:center!important;filter:none!important;transform:none!important;}
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar{display:none!important;}
+.reference-solo-live .solo-camera-off-center{justify-content:center!important;padding:0 16px!important;}
+.reference-solo-live .solo-camera-off-center .solo-status-icon{margin:0 auto 10px!important;}
+.go-live-reference-button{left:48px!important;right:48px!important;height:60px!important;border-radius:20px!important;font-size:19px!important;}
+.go-live-reference-button:disabled{opacity:.95!important;}
+.go-live-countdown{position:absolute;inset:0;z-index:30;display:grid;place-items:center;background:rgba(0,0,0,.24);font-size:92px;font-weight:900;color:#fff;text-shadow:0 8px 30px rgba(0,0,0,.75);pointer-events:none;}
+@media(max-width:430px){.go-live-reference-button{left:42px!important;right:42px!important;height:56px!important;border-radius:18px!important;font-size:18px!important}.go-live-countdown{font-size:82px!important}}
