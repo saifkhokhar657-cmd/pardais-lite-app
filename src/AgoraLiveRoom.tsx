@@ -18,6 +18,8 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [connected, setConnected] = useState(false);
   const [remoteCameraOn, setRemoteCameraOn] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
+  const [giftBusy, setGiftBusy] = useState(false);
+  const [selectedGift, setSelectedGift] = useState<any>(null);
   const [floatingHearts, setFloatingHearts] = useState<number[]>([]);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState<string[]>([]);
@@ -153,6 +155,25 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     } catch {}
   };
 
+  const sendGift = async (gift:any) => {
+    if (!room.isHost && giftBusy) return;
+    setGiftBusy(true);
+    try {
+      await api.post('/api/gifts/send', {
+        receiverId: String(room.host?.id || room.hostId),
+        giftId: gift.id,
+        quantity: 1,
+        coins: gift.coins,
+      });
+      setGiftOpen(false);
+      setSelectedGift(null);
+    } catch (e:any) {
+      window.alert(String(e?.message || 'Gift could not be sent.'));
+    } finally {
+      setGiftBusy(false);
+    }
+  };
+
   const share = async () => {
     try { await navigator.share?.({ title: 'Pardais Lite Live', text: room.title || 'Join my live stream', url: window.location.href }); } catch {}
   };
@@ -194,7 +215,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
 
 
   return <div className={`solo-live reference-solo-live ${room.isHost ? 'host-live' : 'viewer-live'}`} onTouchEnd={handleTouchLike} onDoubleClick={handleDoubleClickLike}>
-    <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''}`} />
+    <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''} ${((room.isHost && cameraOn) || (!room.isHost && remoteCameraOn)) ? 'has-video' : ''}`} />
     {((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) && <div className="solo-live-background" style={hostAvatar ? { backgroundImage: `url(${hostAvatar})` } : undefined}><div className="solo-live-background-shade" /></div>}
     <div className="solo-live-shade" />
 
@@ -241,7 +262,7 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </div>
 
     <div className="solo-bottom-actions">
-      {room.isHost ? <button className="solo-invite" onClick={() => setInviteOpen(v => !v)}><UserPlus /><b>Invite</b></button> : <button className="solo-invite" onClick={() => setFollowed(v => !v)}>{followed ? 'Following' : 'Follow'}</button>}
+      {room.isHost ? <button className="solo-invite" onClick={() => setInviteOpen(v => !v)}><UserPlus /><b>Invite</b></button> : null}
       {room.isHost ? <>
         <button className={micOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleMic()} aria-label="Microphone">{micOn ? <Mic /> : <MicOff />}</button>
         <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()} aria-label="Camera">{cameraOn ? <Camera /> : <CameraOff />}</button>
@@ -253,7 +274,16 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       </>}
     </div>
     <div className="solo-floating-hearts" aria-hidden="true">{floatingHearts.map(id => <Heart key={id} fill="currentColor" className="solo-floating-heart" />)}</div>
-    {giftOpen && !room.isHost && <div className="solo-gift-pop"><b><Gift /> Gifts</b><span>Choose a gift to send to this host.</span><button onClick={() => setGiftOpen(false)}>Close</button></div>}
+    {giftOpen && !room.isHost && <div className="solo-gift-drawer-backdrop" onClick={e => { if (e.target === e.currentTarget) { setGiftOpen(false); setSelectedGift(null); } }}>
+      <div className="solo-gift-drawer">
+        <div className="solo-gift-head"><button onClick={() => { setGiftOpen(false); setSelectedGift(null); }}><X /></button><b>Send Gift</b><span>🪙 0</span></div>
+        <div className="solo-gift-tabs"><button className="active">Popular</button><button>Luxury</button><button>Special</button></div>
+        <div className="solo-gift-grid">
+          {[{id:'rose',name:'Rose',icon:'🌹',coins:10},{id:'heart',name:'Heart',icon:'💖',coins:50},{id:'crown',name:'Crown',icon:'👑',coins:100},{id:'diamond',name:'Diamond',icon:'💎',coins:500},{id:'star',name:'Star',icon:'⭐',coins:1000},{id:'love',name:'Love',icon:'💝',coins:2000},{id:'car',name:'Super Car',icon:'🏎️',coins:5000},{id:'rocket',name:'Rocket',icon:'🚀',coins:10000}].map(g => <button key={g.id} className={selectedGift?.id===g.id?'selected':''} disabled={giftBusy} onClick={() => setSelectedGift(g)}><span>{g.icon}</span><b>{g.name}</b><small>🪙 {g.coins}</small></button>)}
+        </div>
+        <div className="solo-gift-sendbar"><span>{selectedGift ? `${selectedGift.name} selected` : 'Select a gift'}</span><button disabled={!selectedGift || giftBusy} onClick={() => selectedGift && void sendGift(selectedGift)}>{giftBusy ? 'Sending…' : 'Send'}</button></div>
+      </div>
+    </div>}
     {moreOpen && room.isHost && <div className="solo-more-pop"><b>More Controls</b><button onClick={() => setMoreOpen(false)}>Beauty / Effects</button><button onClick={() => setMoreOpen(false)}>Live Settings</button><button onClick={() => setMoreOpen(false)}>Close</button></div>}
 
     {inviteOpen && <div className="solo-invite-pop"><b><UsersRound /> Invite hosts</b><span>Available hosts will appear here.</span><button onClick={() => setInviteOpen(false)}>Close</button></div>}

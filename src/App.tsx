@@ -226,10 +226,25 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   const [soundOn,setSoundOn]=useState(false);
   const [followBusy,setFollowBusy]=useState(false);
   const feedRef=useRef<HTMLDivElement|null>(null);
+  const videoRefs=useRef<Record<string,HTMLVideoElement|null>>({});
   const load=async()=>{try{const r=await api.get(`/api/feed?mode=${homeMode.toLowerCase().replace(' ','-')}`);setItems(r.data?.items||[]);setIndex(0)}catch{setItems([])}};
   useEffect(()=>{void load();},[homeMode]);
-  useEffect(()=>{const el=feedRef.current;if(!el)return;const onScroll=()=>{const h=el.clientHeight;const next=Math.max(0,Math.min(items.length-1,Math.round(el.scrollTop/h)));setIndex(next);const item=items[next];if(item)void registerView(String(item.id));};el.addEventListener('scroll',onScroll,{passive:true});return()=>el.removeEventListener('scroll',onScroll)},[items.length]);
+  useEffect(()=>{const el=feedRef.current;if(!el)return;const onScroll=()=>{const h=el.clientHeight||1;const next=Math.max(0,Math.min(items.length-1,Math.round(el.scrollTop/h)));setIndex(next);const item=items[next];if(item)void registerView(String(item.id));};el.addEventListener('scroll',onScroll,{passive:true});return()=>el.removeEventListener('scroll',onScroll)},[items.length]);
   useEffect(()=>{if(items[0])void registerView(String(items[0].id))},[items.length]);
+  useEffect(()=>{
+    const activeId=items[index]?.id;
+    Object.entries(videoRefs.current).forEach(([id,video])=>{
+      if(!video)return;
+      if(id===String(activeId)){
+        video.muted=!soundOn;
+        const p=video.play();
+        if(p) p.catch(()=>{});
+      }else{
+        video.pause();
+        video.currentTime=0;
+      }
+    });
+  },[index,items,soundOn]);
   const reel=items[index];
   const like=async()=>{if(!reel)return;try{const r=await api.post(`/api/reels/${reel.id}/like`);setItems(v=>v.map(x=>x.id===reel.id?{...x,likesCount:r.data.likesCount,likedByMe:r.data.liked}:x))}catch{}};
   const registerView=async(id:string)=>{try{const r=await api.post(`/api/reels/${id}/view`);setItems(v=>v.map(x=>x.id===id?{...x,viewsCount:r.data.viewsCount}:x))}catch{}};
@@ -244,7 +259,7 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
   return <main className='reel-screen home-feed-screen'>
     <div className='reel-top home-feed-top'><button className={homeMode==='Following'?'tab active':'tab muted'} onClick={()=>setHomeMode('Following')}>Following</button><button className={homeMode==='For You'?'tab active':'tab muted'} onClick={()=>setHomeMode('For You')}>For You</button><button className='search-icon' onClick={onSearch}><Search/></button></div>
     {!items.length?<div className='following-empty'><Video/><b>No videos yet</b><span>Real published reels will appear here.</span></div>:<div ref={feedRef} className='reel-feed-scroll'>{items.map((r,i)=><section className='reel-stage home-reel-stage' key={r.id} onDoubleClick={()=>void like()}>
-      <video src={r.mediaUrl} controls={false} autoPlay={i===index} muted={!soundOn} loop playsInline className='home-reel-video' onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/><button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
+      <video ref={el=>{videoRefs.current[String(r.id)]=el}} src={r.mediaUrl} controls={false} autoPlay={false} muted={!soundOn} loop playsInline preload={i===index?'auto':'metadata'} className='home-reel-video' onLoadedData={e=>{if(i===index){const v=e.currentTarget;v.muted=!soundOn;void v.play().catch(()=>{})}}} onClick={()=>setSoundOn(v=>!v)}/><div className='reel-overlay'/><button className='home-sound-toggle' aria-label={soundOn?'Mute video':'Unmute video'} onClick={()=>setSoundOn(v=>!v)}>{soundOn?<Volume2/>:<VolumeX/>}</button>
       <button className='reel-author-block' aria-label='Open creator profile' onClick={()=>onOpenProfile(String(r.userId))}><div className='home-dp'>{r.author?.avatar?<img src={r.author.avatar} alt=''/>:<span>{String(r.author?.name||'P').slice(0,1).toUpperCase()}</span>}<span className='home-dp-plus'>+</span></div></button>
       <div className='reel-actions reference-reel-actions'>
         <button onClick={()=>void like()} aria-label='Like video'><Heart fill={r.likedByMe?'currentColor':'none'}/><span>{r.likesCount||0}</span></button>
