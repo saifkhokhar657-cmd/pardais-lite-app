@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type TouchEvent, type MouseEvent } from 'react';
 import AgoraRTC, { type IAgoraRTCClient, type IAgoraRTCRemoteUser, type ICameraVideoTrack, type IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift, Crown } from 'lucide-react';
 import { api } from './api';
 import { auth } from './firebase';
 
@@ -36,6 +36,11 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [filterOn, setFilterOn] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'front'|'back'>('front');
+  const [broadcastEnded, setBroadcastEnded] = useState(false);
+  const [endCountdown, setEndCountdown] = useState(5);
+  const [entryVisible, setEntryVisible] = useState(false);
+  const [entryLevel, setEntryLevel] = useState(0);
+  const [entryLabel, setEntryLabel] = useState('');
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
   const hostId = room.host?.username || room.host?.id || room.hostId || 'unknown';
@@ -55,12 +60,51 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
         const r = await api.get(`/api/live/state/${room.id}`);
         if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
         if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
-      } catch {}
+      } catch (e: any) {
+        if (!room.isHost && (e?.response?.status === 404 || String(e?.message || '').includes('404'))) setBroadcastEnded(true);
+      }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 2000);
+    const timer = window.setInterval(() => void poll(), 1500);
     return () => window.clearInterval(timer);
-  }, [room.id]);
+  }, [room.id, room.isHost]);
+
+  useEffect(() => {
+    if (!broadcastEnded || room.isHost) return;
+    setEndCountdown(5);
+    let remaining = 5;
+    const timer = window.setInterval(() => {
+      remaining -= 1;
+      setEndCountdown(remaining);
+      if (remaining <= 0) {
+        window.clearInterval(timer);
+        onClose();
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [broadcastEnded, room.isHost]);
+
+  useEffect(() => {
+    if (!connected || room.isHost) return;
+    let cancelled = false;
+    const loadEntry = async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (!uid) return;
+        const r = await api.get(`/api/profile/${encodeURIComponent(uid)}`);
+        const level = Math.max(1, Math.min(50, Number(r.data?.profile?.level ?? 1)));
+        const milestone = Math.floor(level / 10) * 10;
+        if (milestone < 10 || cancelled) return;
+        const labels: Record<number,string> = {10:'Silver Entry',20:'Gold Entry',30:'Diamond Entry',40:'Royal Entry',50:'Ultimate Entry'};
+        setEntryLevel(milestone);
+        setEntryLabel(labels[milestone] || 'Entry');
+        setEntryVisible(true);
+        window.setTimeout(() => { if (!cancelled) setEntryVisible(false); }, 3200);
+      } catch {}
+    };
+    void loadEntry();
+    return () => { cancelled = true; };
+  }, [connected, room.isHost]);
 
   useEffect(() => {
     let disposed = false;
@@ -319,6 +363,24 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
     </div>
 
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
+
+    {entryVisible && !room.isHost && <div className={`solo-entry-overlay entry-level-${entryLevel}`} aria-hidden="true">
+      <div className="solo-entry-glow" />
+      <div className="solo-entry-ring">
+        <div className="solo-entry-avatar">{auth.currentUser?.photoURL ? <img src={auth.currentUser.photoURL} alt="" /> : <span>{String(auth.currentUser?.displayName || 'P').slice(0,1).toUpperCase()}</span>}</div>
+        <Crown className="solo-entry-crown" fill="currentColor" />
+      </div>
+      <div className="solo-entry-title">{entryLabel}</div>
+      <div className="solo-entry-level">Level {entryLevel}</div>
+    </div>}
+
+    {broadcastEnded && !room.isHost && <div className="solo-broadcast-ended" role="status">
+      <div className="solo-ended-icon"><PhoneOff /></div>
+      <h2>This broadcast has ended</h2>
+      <p>You will be redirected to Live in <b>{endCountdown}</b> seconds...</p>
+      <div className="solo-ended-progress"><i style={{width: `${Math.max(0, Math.min(100, (5 - endCountdown) * 20))}%`}} /></div>
+      <button onClick={onClose}>Go to Live Now</button>
+    </div>}
 
     <div className="solo-comments" ref={commentsScrollRef} aria-label="Live comments">
       {comments.map((c) => (

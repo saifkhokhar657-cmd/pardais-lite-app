@@ -299,7 +299,18 @@ function HomeScreen({ homeMode, setHomeMode, onSearch, onOpenProfile }: any) {
 
 function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, liveView, setLiveView, activeLiveRoom, onOpenRoom, onCloseRoom }: any) {
   const [rooms, setRooms] = useState<any[]>([]);
-  useEffect(() => { void api.get('/api/live/rooms').then(r => setRooms(r.data?.rooms ?? [])).catch(() => setRooms([])); }, [activeLiveRoom]);
+  useEffect(() => {
+    let disposed = false;
+    const loadRooms = async () => {
+      try {
+        const r = await api.get('/api/live/rooms');
+        if (!disposed) setRooms(r.data?.rooms ?? []);
+      } catch {}
+    };
+    void loadRooms();
+    const timer = window.setInterval(() => void loadRooms(), 1500);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [activeLiveRoom]);
   if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} />;
 
   return <main className='live-page'>

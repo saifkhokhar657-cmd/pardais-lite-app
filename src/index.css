@@ -986,3 +986,29 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   .reference-solo-live .solo-comment-meta>b{max-width:175px!important}
   .reference-solo-live .solo-comment-copy p{font-size:11.5px!important}
 }
+
+/* V31 live entry + ended broadcast */
+.reference-solo-live .solo-entry-overlay{
+  position:absolute; inset:0; z-index:25; pointer-events:none; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center; animation:soloEntryIn .45s ease-out both;
+}
+.reference-solo-live .solo-entry-glow{position:absolute;width:260px;height:260px;border-radius:50%;filter:blur(34px);opacity:.58;animation:soloEntryGlow 1.8s ease-in-out infinite alternate}
+.reference-solo-live .solo-entry-ring{position:relative;width:150px;height:150px;border-radius:50%;display:grid;place-items:center;border:5px solid #fff;box-shadow:0 0 0 7px rgba(255,255,255,.18),0 0 45px currentColor;animation:soloEntryPulse 1.2s ease-in-out infinite alternate}
+.reference-solo-live .solo-entry-avatar{width:126px;height:126px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#20182d;color:#fff;font-size:52px;font-weight:900;border:3px solid rgba(255,255,255,.8)}
+.reference-solo-live .solo-entry-avatar img{width:100%;height:100%;object-fit:cover}
+.reference-solo-live .solo-entry-crown{position:absolute;top:-28px;width:54px;height:54px;filter:drop-shadow(0 0 10px currentColor);animation:soloEntryCrown 1s ease-in-out infinite alternate}
+.reference-solo-live .solo-entry-title{position:relative;margin-top:18px;font-size:25px;font-weight:900;text-shadow:0 2px 16px #000;letter-spacing:.2px}
+.reference-solo-live .solo-entry-level{position:relative;margin-top:5px;padding:5px 13px;border-radius:14px;background:rgba(0,0,0,.48);font-size:14px;font-weight:800;backdrop-filter:blur(8px)}
+.reference-solo-live .entry-level-10{color:#d9e3ee}.reference-solo-live .entry-level-10 .solo-entry-glow{background:#b9c7d8}.reference-solo-live .entry-level-10 .solo-entry-ring{color:#dbe5ef}
+.reference-solo-live .entry-level-20{color:#ffd36a}.reference-solo-live .entry-level-20 .solo-entry-glow{background:#ffb21a}.reference-solo-live .entry-level-20 .solo-entry-ring{color:#ffd44d}
+.reference-solo-live .entry-level-30{color:#69b7ff}.reference-solo-live .entry-level-30 .solo-entry-glow{background:#278bff}.reference-solo-live .entry-level-30 .solo-entry-ring{color:#5ab0ff}
+.reference-solo-live .entry-level-40{color:#e889ff}.reference-solo-live .entry-level-40 .solo-entry-glow{background:#a52cff}.reference-solo-live .entry-level-40 .solo-entry-ring{color:#e05cff}
+.reference-solo-live .entry-level-50{color:#ffcf54}.reference-solo-live .entry-level-50 .solo-entry-glow{background:#ff6b00}.reference-solo-live .entry-level-50 .solo-entry-ring{color:#ffd23f;box-shadow:0 0 0 8px rgba(255,194,52,.18),0 0 70px #ff9f1c}
+.reference-solo-live .solo-broadcast-ended{position:absolute;inset:0;z-index:28;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;background:rgba(4,4,8,.72);backdrop-filter:blur(13px);color:#fff}
+.reference-solo-live .solo-ended-icon{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;border:2px solid rgba(255,255,255,.32);background:rgba(255,255,255,.09);box-shadow:0 0 35px rgba(168,85,247,.4);margin-bottom:18px}
+.reference-solo-live .solo-ended-icon svg{width:38px;height:38px}
+.reference-solo-live .solo-broadcast-ended h2{margin:0 0 8px;font-size:23px}.reference-solo-live .solo-broadcast-ended p{margin:0;color:rgba(255,255,255,.72);font-size:14px}.reference-solo-live .solo-ended-progress{width:min(280px,78vw);height:5px;border-radius:5px;background:rgba(255,255,255,.14);overflow:hidden;margin:20px 0}.reference-solo-live .solo-ended-progress i{display:block;height:100%;background:linear-gradient(90deg,#d74bd5,#5d86ff);transition:width .9s linear}.reference-solo-live .solo-broadcast-ended button{border:0;border-radius:22px;padding:10px 18px;color:#fff;background:linear-gradient(100deg,#d74bd5,#5d86ff);font-weight:800}
+@keyframes soloEntryIn{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
+@keyframes soloEntryGlow{from{transform:scale(.72);opacity:.34}to{transform:scale(1.12);opacity:.7}}
+@keyframes soloEntryPulse{from{transform:scale(.96) rotate(-2deg)}to{transform:scale(1.05) rotate(2deg)}}
+@keyframes soloEntryCrown{from{transform:translateY(4px) rotate(-6deg)}to{transform:translateY(-5px) rotate(6deg)}}
