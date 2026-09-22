@@ -754,3 +754,96 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   .reference-solo-live .solo-camera-off-avatar{width:52vw!important;height:52vw!important;max-width:235px!important;max-height:235px!important;margin-bottom:15px!important}
   .reference-solo-live .solo-status-icon{width:48px!important;height:48px!important}
 }
+
+/* V27 — isolate live camera-off presentation from the header/profile stacking context.
+   The old camera-off/media layers were siblings of the header and accumulated overrides.
+   This stage owns the entire live viewport and keeps the status strictly centered. */
+.reference-solo-live .solo-camera-off-stage{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  z-index:7!important;
+  display:none!important;
+  overflow:hidden!important;
+  pointer-events:none!important;
+}
+.reference-solo-live .solo-camera-off-stage.is-visible{display:block!important}
+.reference-solo-live .solo-camera-off-backdrop{
+  position:absolute!important;
+  inset:-8%!important;
+  width:116%!important;
+  height:116%!important;
+  overflow:hidden!important;
+  background:#080812!important;
+}
+.reference-solo-live .solo-camera-off-backdrop img{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  object-position:center!important;
+  filter:blur(28px) brightness(.48)!important;
+  transform:scale(1.08)!important;
+}
+.reference-solo-live .solo-camera-off-backdrop span{
+  position:absolute!important;
+  inset:0!important;
+  display:grid!important;
+  place-items:center!important;
+  background:#191524!important;
+  color:#fff!important;
+  font-size:150px!important;
+  font-weight:900!important;
+}
+.reference-solo-live .solo-camera-off-center{
+  position:absolute!important;
+  inset:0!important;
+  z-index:2!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  padding:140px 18px 170px!important;
+}
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar{
+  display:grid!important;
+  place-items:center!important;
+  width:min(52vw,230px)!important;
+  height:min(52vw,230px)!important;
+  margin:0 auto 18px!important;
+  flex:none!important;
+  overflow:hidden!important;
+  border-radius:50%!important;
+  background:#29222f!important;
+  border:4px solid rgba(255,255,255,.96)!important;
+  box-shadow:0 0 0 5px rgba(168,85,247,.72),0 14px 50px rgba(0,0,0,.5)!important;
+}
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar img{
+  width:100%!important;height:100%!important;object-fit:cover!important;border-radius:50%!important;filter:none!important;transform:none!important;
+}
+.reference-solo-live .solo-camera-off-center .solo-camera-off-avatar span{
+  display:grid!important;place-items:center!important;width:100%!important;height:100%!important;color:#fff!important;background:#29222f!important;font-size:84px!important;font-weight:900!important;
+}
+.reference-solo-live .solo-camera-off-center .solo-status-icon{
+  width:58px!important;height:58px!important;border-radius:50%!important;display:grid!important;place-items:center!important;
+  margin:0 auto 12px!important;background:rgba(225,47,54,.92)!important;color:#fff!important;border:2px solid rgba(255,255,255,.8)!important;box-shadow:0 8px 25px rgba(0,0,0,.4)!important;
+}
+.reference-solo-live .solo-camera-off-center .solo-status-icon svg{width:29px!important;height:29px!important}
+.reference-solo-live .solo-camera-off-center b{font-size:20px!important;line-height:1.2!important;color:#fff!important;text-shadow:0 2px 12px #000!important;margin:0!important}
+.reference-solo-live .solo-camera-off-center>span{font-size:14px!important;color:rgba(255,255,255,.88)!important;text-shadow:0 2px 10px #000!important;margin-top:5px!important}
+/* Controls/header always sit above the camera-off stage. */
+.reference-solo-live .solo-live-top{z-index:20!important}
+.reference-solo-live .solo-stats{z-index:19!important}
+.reference-solo-live .solo-comment-bar{z-index:21!important}
+.reference-solo-live .solo-bottom-actions{z-index:22!important}
+.reference-solo-live .solo-end-modal{z-index:50!important}
+@media(max-width:430px){
+  .reference-solo-live .solo-camera-off-center{padding:125px 12px 155px!important}
+  .reference-solo-live .solo-camera-off-center .solo-camera-off-avatar{width:min(52vw,220px)!important;height:min(52vw,220px)!important;margin-bottom:15px!important}
+  .reference-solo-live .solo-camera-off-center .solo-status-icon{width:52px!important;height:52px!important}
+  .reference-solo-live .solo-camera-off-center b{font-size:18px!important}
+  .reference-solo-live .solo-camera-off-center>span{font-size:13px!important}
+}

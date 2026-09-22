@@ -216,7 +216,19 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
 
   return <div className={`solo-live reference-solo-live ${room.isHost ? 'host-live' : 'viewer-live'}`} onTouchEnd={handleTouchLike} onDoubleClick={handleDoubleClickLike}>
     <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''} ${((room.isHost && cameraOn) || (!room.isHost && remoteCameraOn)) ? 'has-video' : ''}`} />
-    {((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) && <div className="solo-camera-off-media" aria-hidden="true">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+    <div className={`solo-camera-off-stage ${((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) ? 'is-visible' : ''}`} aria-hidden="true">
+      <div className="solo-camera-off-backdrop">
+        {hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}
+      </div>
+      <div className="solo-camera-off-center">
+        {(!cameraOn || (!room.isHost && !remoteCameraOn)) && <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+        {((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) && <div className="solo-status-icon solo-status-camera"><CameraOff /></div>}
+        {room.isHost && cameraOn && !micOn && <div className="solo-status-icon solo-status-mic"><MicOff /></div>}
+        {((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) && <b>Camera is off</b>}
+        {room.isHost && cameraOn && !micOn && <b>Microphone is off</b>}
+        <span>{room.isHost ? (cameraOn ? (micOn ? 'Your audio is live' : 'Your microphone is off') : (micOn ? 'Your audio is live' : 'Your microphone is off')) : 'Camera is off'}</span>
+      </div>
+    </div>
     <div className="solo-live-shade" />
 
     <header className="solo-live-top">
@@ -242,14 +254,6 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
-    {((room.isHost && (!cameraOn || !micOn)) || (!room.isHost && !remoteCameraOn)) && <div className="solo-camera-off">
-      {!cameraOn && <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
-      {!cameraOn && <div className="solo-status-icon solo-status-camera"><CameraOff /></div>}
-      {room.isHost && !micOn && <div className="solo-status-icon solo-status-mic"><MicOff /></div>}
-      {!cameraOn && <b>Camera is off</b>}
-      {room.isHost && cameraOn && !micOn && <b>Microphone is off</b>}
-      <span>{room.isHost ? (micOn ? 'Your audio is live' : 'Your microphone is off') : 'Camera is off'}</span>
-    </div>}
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
     <div className="solo-comments">
