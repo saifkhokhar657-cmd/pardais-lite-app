@@ -334,7 +334,25 @@ function CreateScreen({ mode='upload', onClose, onGoLive }: any) {
  const chooseFile=(f?:File)=>{if(!f||!f.type.startsWith('video/'))return;setFile(f);setPreview(URL.createObjectURL(f));setStep(2)};
  const recordStart=()=>{if(!streamRef.current||recording)return;try{const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(x=>MediaRecorder.isTypeSupported(x))||'';const rec=new MediaRecorder(streamRef.current,mime?{mimeType:mime}:undefined);chunksRef.current=[];rec.ondataavailable=e=>{if(e.data.size)chunksRef.current.push(e.data)};rec.onstop=()=>{const blob=new Blob(chunksRef.current,{type:rec.mimeType||'video/webm'});const f=new File([blob],`pardais-${Date.now()}.webm`,{type:blob.type});setFile(f);setPreview(URL.createObjectURL(blob));setStep(2)};rec.start();recorderRef.current=rec;setRecording(true)}catch{setError('Video recording is not available.')}};
  const recordStop=()=>{recorderRef.current?.stop();recorderRef.current=null;setRecording(false)};
- const uploadFinal=async(status:'published'|'draft')=>{if(!file)return;setUploading(true);try{const token=auth.currentUser?await auth.currentUser.getIdToken():''; const up=await fetch(`${API_BASE}/api/media/upload`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-File-Name':file.name, ...(token?{Authorization:`Bearer ${token}`}:{})},body:file});const data=await up.json().catch(()=>({}));if(!up.ok)throw new Error(String(data?.error||`Upload failed (${up.status})`));await api.post('/api/reels',{key:data.key,mediaUrl:data.publicUrl,caption,location,hashtags:hashtags.split(/[ ,]+/).map(x=>x.replace(/^#/,'')).filter(Boolean).slice(0,5),status,visibility,allowComments});setDraftSaved(status==='draft');if(status==='published'){window.alert('Video posted successfully.');onClose()}else{window.alert('Draft saved to your profile.');onClose()}}catch(e:any){window.alert(String(e?.message||'Video upload failed. Please try again.'))}finally{setUploading(false)}};
+ const uploadFinal=async(status:'published'|'draft')=>{if(!file)return;setUploading(true);try{const token=auth.currentUser?await auth.currentUser.getIdToken():'';let data:any=null;let directError:any=null;
+  // Prefer a short presign request, then upload the large video directly to R2.
+  // This avoids sending a 100–200MB video through the Railway API proxy.
+  try{
+    const presign=await api.post('/api/media/presign',{contentType:file.type||'application/octet-stream',fileName:file.name});
+    const signed=presign.data||{};
+    if(!signed.url||!signed.key||!signed.publicUrl) throw new Error('Upload URL was not created.');
+    const put=await fetch(String(signed.url),{method:'PUT',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+    if(!put.ok) throw new Error(`Media storage upload failed (${put.status}).`);
+    data={key:signed.key,publicUrl:signed.publicUrl};
+  }catch(e:any){
+    directError=e;
+    // Fallback for deployments where R2 browser CORS is not configured yet.
+    const up=await fetch(`${API_BASE}/api/media/upload`,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream','X-File-Name':file.name,...(token?{Authorization:`Bearer ${token}`}:{})},body:file});
+    const fallback=await up.json().catch(()=>({}));
+    if(!up.ok) throw new Error(String(fallback?.error||e?.message||`Upload failed (${up.status})`));
+    data=fallback;
+  }
+  await api.post('/api/reels',{key:data.key,mediaUrl:data.publicUrl,caption,location,hashtags:hashtags.split(/[ ,]+/).map(x=>x.replace(/^#/,'')).filter(Boolean).slice(0,5),status,visibility,allowComments});setDraftSaved(status==='draft');if(status==='published'){window.alert('Video posted successfully.');onClose()}else{window.alert('Draft saved to your profile.');onClose()}}catch(e:any){const msg=String(e?.message||'Video upload failed. Please try again.');window.alert(msg==='Failed to fetch'?'Upload connection failed. Please check your internet connection and try again.':msg)}finally{setUploading(false)}};
  const filterStyle={filter:effect?'contrast(1.08) saturate(1.22) brightness(1.04)':'none',transform:`scaleX(${facing==='user'?-1:1}) scale(${0.84 * zoom})`};
  const startLiveCountdown = async () => {
   if (startingLive) return;
