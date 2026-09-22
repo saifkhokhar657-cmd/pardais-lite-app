@@ -556,3 +556,41 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
  .reference-solo-live .solo-camera-off b{font-size:18px!important}
  .reference-solo-live .solo-camera-off span{font-size:13px!important}
 }
+
+/* V24 FINAL UI FIXES
+   Reels: video occupies the complete phone viewport; header/tabs and bottom nav overlay it.
+   Live camera-off: one real host avatar layer, full-screen and sharp, with centered avatar.
+*/
+.home-feed-screen{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;background:#000!important}
+.home-feed-screen .home-feed-top{height:76px!important;top:0!important;left:0!important;right:0!important;z-index:20!important;background:linear-gradient(180deg,rgba(0,0,0,.62),rgba(0,0,0,0))!important;align-items:flex-end!important;padding-bottom:12px!important;pointer-events:none!important}
+.home-feed-screen .home-feed-top>*{pointer-events:auto!important}
+.home-feed-screen .reel-feed-scroll{position:absolute!important;inset:0!important;width:100%!important;height:100dvh!important;display:block!important;overflow-y:auto!important;overflow-x:hidden!important;scroll-snap-type:y mandatory!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior-y:contain!important}
+.home-feed-screen .reel-feed-scroll .reel-stage.home-reel-stage{position:relative!important;inset:auto!important;width:100%!important;height:100dvh!important;min-height:100dvh!important;flex:none!important;display:block!important;overflow:hidden!important;scroll-snap-align:start!important;scroll-snap-stop:always!important}
+.home-feed-screen .home-reel-video{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;background:#000!important;z-index:1!important}
+.home-feed-screen .reel-overlay{position:absolute!important;inset:0!important;z-index:2!important;pointer-events:none!important}
+.home-feed-screen .home-sound-toggle{z-index:15!important}
+.home-feed-screen .reel-actions{z-index:14!important}
+.home-feed-screen .reel-meta{z-index:14!important}
+.home-feed-screen .reel-author-block{z-index:14!important}
+.home-feed-screen .reel-video-loader{z-index:13!important}
+.home-feed-screen .bottom{z-index:50!important}
+
+/* Replace the old camera-off stack: no separate blurred backdrop and no avatar hidden behind the header. */
+.reference-solo-live .solo-live-background{z-index:0!important;position:absolute!important;inset:0!important;background-color:#050507!important;background-position:center!important;background-size:cover!important;background-repeat:no-repeat!important;filter:none!important;opacity:1!important}
+.reference-solo-live .solo-live-background-shade{z-index:1!important;position:absolute!important;inset:0!important;background:rgba(0,0,0,.18)!important;backdrop-filter:none!important}
+.reference-solo-live .solo-live-video{z-index:2!important;position:absolute!important;inset:0!important;width:100%!important;height:100%!important;background:transparent!important}
+.reference-solo-live .solo-live-video.has-video{z-index:4!important}
+.reference-solo-live .solo-live-shade{z-index:5!important}
+.reference-solo-live .solo-camera-off{z-index:8!important;position:absolute!important;inset:0!important;width:100%!important;height:100%!important;padding:110px 16px 150px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;pointer-events:none!important}
+.reference-solo-live .solo-camera-off-avatar{width:min(58vw,250px)!important;height:min(58vw,250px)!important;margin:0 auto 16px!important;flex:0 0 auto!important;border-radius:50%!important;overflow:hidden!important;background:#12101a!important;border:4px solid rgba(255,255,255,.94)!important;box-shadow:0 0 0 4px rgba(168,85,247,.72),0 14px 55px rgba(0,0,0,.5)!important;display:grid!important;place-items:center!important}
+.reference-solo-live .solo-camera-off-avatar img{width:100%!important;height:100%!important;display:block!important;object-fit:cover!important;border-radius:50%!important;filter:none!important}
+.reference-solo-live .solo-camera-off-avatar span{font-size:84px!important;font-weight:800!important;color:#fff!important}
+.reference-solo-live .solo-camera-off b{font-size:20px!important;position:relative!important;text-shadow:0 2px 12px #000!important}
+.reference-solo-live .solo-camera-off>span{font-size:14px!important;color:rgba(255,255,255,.86)!important;position:relative!important;text-shadow:0 2px 10px #000!important}
+.reference-solo-live .solo-camera-off-avatar + b{margin-top:0!important}
+@media(max-width:390px){
+ .reference-solo-live .solo-camera-off{padding:100px 10px 135px!important}
+ .reference-solo-live .solo-camera-off-avatar{width:min(55vw,210px)!important;height:min(55vw,210px)!important}
+ .reference-solo-live .solo-camera-off b{font-size:18px!important}
+ .reference-solo-live .solo-camera-off>span{font-size:13px!important}
+}
