@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type TouchEvent, type MouseEvent } from 'react';
 import AgoraRTC, { type IAgoraRTCClient, type IAgoraRTCRemoteUser, type ICameraVideoTrack, type IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift, Crown } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift, Crown, Check, Ban, Users } from 'lucide-react';
 import { api } from './api';
 import { auth } from './firebase';
 
 type Room = { id: string; channel: string; hostId: string; title?: string; topSupporters?: any[]; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
 
-export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; onClose: () => void; onViewProfile?: (uid: string) => void }) {
+export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { room: Room; onClose: () => void; onViewProfile?: (uid: string) => void; onSwitchRoom?: (room: any) => void }) {
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const micRef = useRef<IMicrophoneAudioTrack | null>(null);
   const camRef = useRef<ICameraVideoTrack | null>(null);
@@ -45,6 +45,15 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
   const [entryVisible, setEntryVisible] = useState(false);
   const [entryLevel, setEntryLevel] = useState(0);
   const [entryLabel, setEntryLabel] = useState('');
+  const [entryAvatar, setEntryAvatar] = useState('');
+  const [entryName, setEntryName] = useState('');
+  const [liveMode, setLiveMode] = useState(String((room as any).displayMode || 'SOLO'));
+  const [incomingInvites, setIncomingInvites] = useState<any[]>([]);
+  const [viewerListOpen, setViewerListOpen] = useState(false);
+  const [viewerList, setViewerList] = useState<any[]>([]);
+  const [viewerListBusy, setViewerListBusy] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState('');
+  const seenInviteStatus = useRef(new Map<string,string>());
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
   const hostId = room.host?.username || room.host?.id || room.hostId || 'unknown';
@@ -64,6 +73,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
         const r = await api.get(`/api/live/state/${room.id}`);
         if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
         if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
+        if (r.data?.displayMode) setLiveMode(String(r.data.displayMode));
       } catch (e: any) {
         if (!room.isHost && (e?.response?.status === 404 || String(e?.message || '').includes('404'))) setBroadcastEnded(true);
       }
@@ -89,25 +99,33 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
   }, [broadcastEnded, room.isHost]);
 
   useEffect(() => {
-    if (!connected || room.isHost) return;
+    if (!connected) return;
     let cancelled = false;
-    const loadEntry = async () => {
+    let lastEntryId = '';
+    const loadEntries = async () => {
       try {
-        const uid = auth.currentUser?.uid;
-        if (!uid) return;
-        const r = await api.get(`/api/profile/${encodeURIComponent(uid)}`);
-        const level = Math.max(1, Math.min(50, Number(r.data?.profile?.level ?? 1)));
+        const r = await api.get(`/api/live/entries/${encodeURIComponent(room.id)}`);
+        const items = Array.isArray(r.data?.items) ? r.data.items : [];
+        const latest = items[items.length - 1];
+        if (!latest || !latest.id || latest.id === lastEntryId) return;
+        lastEntryId = String(latest.id);
+        if (cancelled) return;
+        const level = Math.max(1, Math.min(50, Number(latest.level || 1)));
         const tier = level >= 50 ? 50 : level >= 40 ? 40 : level >= 30 ? 30 : level >= 20 ? 20 : level >= 10 ? 10 : 1;
         const labels: Record<number,string> = {1:'Starter Entry',10:'Silver Entry',20:'Gold Entry',30:'Diamond Entry',40:'Royal Entry',50:'Ultimate Entry'};
         setEntryLevel(tier);
         setEntryLabel(labels[tier]);
+        setEntryAvatar(String(latest.avatar || ''));
+        setEntryName(String(latest.name || latest.username || 'Pardais User'));
         setEntryVisible(true);
         window.setTimeout(() => { if (!cancelled) setEntryVisible(false); }, 3000);
       } catch {}
     };
-    void loadEntry();
-    return () => { cancelled = true; };
-  }, [connected, room.isHost]);
+    void loadEntries();
+    const timer = window.setInterval(() => void loadEntries(), 1500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [connected, room.id]);
+
 
   useEffect(() => {
     if (!room.isHost) return;
@@ -116,6 +134,44 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
     const timer = window.setInterval(beat, 2000);
     return () => window.clearInterval(timer);
   }, [room.id, room.isHost]);
+
+  useEffect(() => {
+    if (!room.isHost) return;
+    let cancelled = false;
+    const loadOutgoing = async () => {
+      try {
+        const r = await api.get(`/api/live/outgoing-invites/${encodeURIComponent(room.id)}`);
+        const items = Array.isArray(r.data?.items) ? r.data.items : [];
+        for (const invite of items) {
+          const id = String(invite.id || '');
+          const status = String(invite.status || '');
+          if (!id || !status) continue;
+          const previous = seenInviteStatus.current.get(id);
+          if (previous && previous !== status && (status === 'accepted' || status === 'rejected')) {
+            setInviteNotice(status === 'accepted' ? 'Invite accepted — One VS One is ready.' : 'Request rejected — you remain in Solo Live.');
+            window.setTimeout(() => setInviteNotice(''), 3500);
+          }
+          seenInviteStatus.current.set(id, status);
+        }
+      } catch {}
+    };
+    void loadOutgoing();
+    const timer = window.setInterval(() => void loadOutgoing(), 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [room.id, room.isHost]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadIncoming = async () => {
+      try {
+        const r = await api.get('/api/live/incoming-invites');
+        if (!cancelled) setIncomingInvites(Array.isArray(r.data?.items) ? r.data.items : []);
+      } catch { if (!cancelled) setIncomingInvites([]); }
+    };
+    void loadIncoming();
+    const timer = window.setInterval(() => void loadIncoming(), 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [room.isHost]);
 
   useEffect(() => {
     if (!inviteOpen || !room.isHost) return;
@@ -247,6 +303,33 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
     }
   };
 
+  const loadViewerList = async () => {
+    setViewerListBusy(true);
+    try {
+      const r = await api.get(`/api/live/viewers/${encodeURIComponent(room.id)}`);
+      setViewerList(Array.isArray(r.data?.items) ? r.data.items : []);
+    } catch { setViewerList([]); }
+    finally { setViewerListBusy(false); }
+  };
+  const toggleViewerList = async () => {
+    const next = !viewerListOpen;
+    setViewerListOpen(next);
+    if (next) await loadViewerList();
+  };
+  const respondHostInvite = async (invite:any, status:'accepted'|'rejected') => {
+    try {
+      const r = await api.post('/api/live/host-invite/respond', { inviteId: invite.id, status });
+      setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
+      if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: true, displayMode: 'ONE VS ONE' });
+      } else if (status === 'rejected') {
+        window.alert('Invite rejected. You are still in Solo Live.');
+      }
+    } catch (e:any) {
+      window.alert(String(e?.response?.data?.error || e?.message || 'Invite response failed.'));
+    }
+  };
+
   const share = async () => {
     try { await navigator.share?.({ title: 'Pardais Lite Live', text: room.title || 'Join my live stream', url: window.location.href }); } catch {}
   };
@@ -284,15 +367,11 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
         }
         mapped.push({ ...cached, id: String(item.id || `${uid}-${item.createdAt || item.text}`), text: String(item.text || ''), isHost: uid === String(room.hostId || room.host?.id || '') });
       }
-      const el = commentsScrollRef.current;
-      const wasNearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 70;
       setComments(mapped);
-      if (wasNearBottom) {
-        window.requestAnimationFrame(() => {
-          const node = commentsScrollRef.current;
-          if (node) node.scrollTop = node.scrollHeight;
-        });
-      }
+      window.requestAnimationFrame(() => {
+        const node = commentsScrollRef.current;
+        if (node) node.scrollTop = node.scrollHeight;
+      });
     } catch {}
   };
 
@@ -405,27 +484,27 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile }: { room: Room; on
         </div>
       </div>
       <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || '').slice(0,1).toUpperCase()}</span>}</div>)}</div>
-      <div className="solo-top-actions">
+      <div className="solo-live-mode-pill">{liveMode}</div>{inviteNotice && <div className="solo-invite-notice">{inviteNotice}</div>}<div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
         <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
       </div>
     </header>
 
     <div className="solo-stats">
-      <span><Eye /> <b>{viewerCount + (room.isHost ? 1 : 0)}</b><small>Viewers</small></span>
+      <button className="solo-viewer-stat" onClick={() => void toggleViewerList()} aria-label="View viewers"><Eye /> <b>{viewerCount}</b><small>Viewers</small></button>
       <span><Clock3 /> <b>{formatTime(elapsed)}</b><small>Live Time</small></span>
       <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
-    {entryVisible && !room.isHost && <div className={`solo-entry-overlay entry-level-${entryLevel}`} aria-hidden="true">
+    {entryVisible && <div className={`solo-entry-overlay entry-level-${entryLevel}`} aria-hidden="true">
       <div className="solo-entry-glow" />
       <div className="solo-entry-ring">
-        <div className="solo-entry-avatar">{auth.currentUser?.photoURL ? <img src={auth.currentUser.photoURL} alt="" /> : <span>{String(auth.currentUser?.displayName || 'P').slice(0,1).toUpperCase()}</span>}</div>
+        <div className="solo-entry-avatar">{entryAvatar ? <img src={entryAvatar} alt="" /> : <span>{entryName.slice(0,1).toUpperCase() || 'P'}</span>}</div>
         <Crown className="solo-entry-crown" fill="currentColor" />
       </div>
-      <div className="solo-entry-title">{entryLabel}</div>
+      <div className="solo-entry-title">{entryName} entered</div><div className="solo-entry-label">{entryLabel}</div>
       <div className="solo-entry-level">Level {entryLevel}</div>
     </div>}
 

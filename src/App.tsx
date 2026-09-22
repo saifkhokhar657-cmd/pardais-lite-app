@@ -315,7 +315,7 @@ function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, 
     const timer = window.setInterval(() => void loadRooms(), 1000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [activeLiveRoom]);
-  if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} />;
+  if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} onSwitchRoom={(next:any)=>onOpenRoom(next)} onViewProfile={onViewProfile} />;
 
   return <main className='live-page'>
     <div className='live-header'><h1>Discover</h1><div className='header-actions'><button className='go-live' onClick={onGoLiveSetup}><Zap /> Go Live</button><button className='round-search'><Search /></button></div></div>
@@ -397,24 +397,28 @@ function ProfileVideoArea({ mode }: { mode: 'Public' | 'Private' | 'Saved' | 'Dr
 function FindFriendsPage({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const search = async () => {
-    const q = query.trim();
-    if (!q) { setItems([]); return; }
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const search = async (term = query) => {
+    const q = term.trim();
     setLoading(true);
     try {
-      const r = await api.get(`/api/users/search?q=${encodeURIComponent(q)}`);
+      const r = await api.get(`/api/users/search${q ? `?q=${encodeURIComponent(q)}` : ''}`);
       setItems(r.data?.items || r.data?.users || []);
-    } catch { setItems([]); }
+      setTotal(Number(r.data?.total ?? (r.data?.items || []).length));
+    } catch { setItems([]); setTotal(0); }
     finally { setLoading(false); }
   };
+  useEffect(() => { void search(''); }, []);
   return <main className='full-dark-page'>
     <header className='simple-page-head'><button onClick={onClose}><ChevronLeft/></button><h1>Find Friends</h1><span/></header>
     <div style={{padding:16}}>
-      <div className='search-box'><Search/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void search()}} placeholder='Search users...' /><button onClick={()=>void search()}>Search</button></div>
-      {loading && <div className='empty-state'><span>Searching...</span></div>}
+      <div className='search-box'><Search/><input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')void search()}} placeholder='Search users...' /><button onClick={()=>void search()}><Search size={16}/> Search</button></div>
+      <div className='search-total-users'><Users size={18}/><b>{total}</b><span>{query.trim() ? 'matching users' : 'total registered users'}</span></div>
+      {loading && <div className='empty-state'><span>Loading users...</span></div>}
       {!loading && query.trim() && !items.length && <div className='empty-state'><Users/><b>No users found</b><span>Try another name or username.</span></div>}
-      <div className='user-list'>{items.map((u:any)=><div className='user-row' key={u.id}><div className='user-avatar'>{u.avatar?<img src={u.avatar} alt=''/>:'P'}</div><div><b>{u.name || 'Pardais User'}</b><small>{u.username || ''}</small></div></div>)}</div>
+      {!loading && !items.length && !query.trim() && <div className='empty-state'><Users/><b>No users yet</b><span>Registered Pardais users will appear here.</span></div>}
+      <div className='user-list'>{items.map((u:any)=><div className='user-row' key={u.id}><div className='user-avatar'>{u.avatar?<img src={u.avatar} alt=''/>:'P'}</div><div><b>{u.name || 'Pardais User'}</b><small>{u.username || ''} · Lv.{u.level || 1}</small></div></div>)}</div>
     </div>
   </main>;
 }

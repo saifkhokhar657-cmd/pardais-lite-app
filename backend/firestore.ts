@@ -33,12 +33,16 @@ export async function list(collection: string, filters: Record<string, unknown> 
 export async function upsertUser(uid: string, data: Record<string, unknown>) {
   const ref = db.collection('users').doc(uid);
   const existing = await ref.get();
+  const existingData: any = existing.exists ? existing.data() : {};
   const base = {
     uid,
-    email: data.email ?? null,
-    name: data.name ?? 'Pardais User',
-    avatar: data.avatar ?? null,
-    level: existing.exists ? (existing.data()?.level ?? 1) : 1,
+    email: data.email ?? existingData.email ?? null,
+    // Never overwrite a Pardais profile name with the provider's original
+    // Firebase/Google display name on every auth refresh.
+    name: existing.exists ? (existingData.name ?? data.name ?? 'Pardais User') : (data.name ?? 'Pardais User'),
+    avatar: existing.exists ? (existingData.avatar ?? data.avatar ?? null) : (data.avatar ?? null),
+    username: existing.exists ? (existingData.username ?? data.username ?? null) : (data.username ?? null),
+    level: existing.exists ? (existingData.level ?? 1) : 1,
     status: 'active',
     updatedAt: now(),
     ...(existing.exists ? {} : { createdAt: now(), coins: 0 }),
