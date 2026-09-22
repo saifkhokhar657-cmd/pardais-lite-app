@@ -1113,3 +1113,6 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 /* Keep profile pictures strictly clipped inside their circular frame. */
 .profile-avatar,.edit-avatar,.user-big-avatar{overflow:hidden!important;clip-path:circle(50% at 50% 50%)!important}
 .profile-avatar img,.edit-avatar img,.user-big-avatar img{width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;border-radius:50%!important}
+
+/* Fixed username prefix */
+.username-prefix{display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:#d85be9;padding:0 2px 0 8px;flex:0 0 auto}.auth-field>div:has(.username-prefix) input{padding-left:2px}

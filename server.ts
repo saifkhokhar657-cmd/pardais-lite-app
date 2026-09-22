@@ -78,8 +78,9 @@ const asyncRoute = (fn: (req: AuthenticatedRequest, res: express.Response) => Pr
 
 app.post('/api/auth/register', asyncRoute(async (req, res) => {
   const uid = req.user!.uid;
-  const requestedUsername = String(req.body?.username || '').trim().toLowerCase();
-  if (requestedUsername && !/^@[a-z0-9_]{3,20}$/.test(requestedUsername)) return res.status(400).json({ error: 'Username must start with @ and contain 3-20 letters, numbers or underscores.' });
+  const usernameInput = String(req.body?.username || '').trim().toLowerCase().replace(/^@+/, '');
+  const requestedUsername = usernameInput ? `@${usernameInput}` : '';
+  if (requestedUsername && !/^@[a-z0-9_]{3,20}$/.test(requestedUsername)) return res.status(400).json({ error: 'Username must contain 3-20 letters, numbers or underscores.' });
   if (requestedUsername) {
     const same = await list('profiles', { username: requestedUsername }, 5);
     if (same.some((x: any) => x.userId !== uid)) return res.status(409).json({ error: 'Username is already taken.' });
