@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type TouchEvent, type MouseEvent } from 'react';
 import AgoraRTC, { type IAgoraRTCClient, type IAgoraRTCRemoteUser, type ICameraVideoTrack, type IMicrophoneAudioTrack } from 'agora-rtc-sdk-ng';
-import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound } from 'lucide-react';
+import { Camera, CameraOff, Mic, MicOff, PhoneOff, Share2, X, UserPlus, Sparkles, MessageCircle, Send, Eye, Clock3, Heart, Verified, UsersRound, Gift } from 'lucide-react';
 import { api } from './api';
 
 type Room = { id: string; channel: string; hostId: string; title?: string; topSupporters?: any[]; agora?: { token: string; appId: string; uid: number; channel: string }; isHost?: boolean; host?: any };
@@ -16,12 +16,15 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   const [viewerCount, setViewerCount] = useState(0);
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(false);
+  const [remoteCameraOn, setRemoteCameraOn] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
+  const [floatingHearts, setFloatingHearts] = useState<number[]>([]);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState<string[]>([]);
   const [followed, setFollowed] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [liked, setLiked] = useState(false);
-  const [likes, setLikes] = useState(0);
+  const [likes, setLikes] = useState(Number((room as any).hearts || 0));
   const [elapsed, setElapsed] = useState(0);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   const [filterOn, setFilterOn] = useState(false);
@@ -41,6 +44,19 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
   }, []);
 
   useEffect(() => {
+    const poll = async () => {
+      try {
+        const r = await api.get(`/api/live/state/${room.id}`);
+        if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
+        if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
+      } catch {}
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 2000);
+    return () => window.clearInterval(timer);
+  }, [room.id]);
+
+  useEffect(() => {
     let disposed = false;
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
@@ -56,14 +72,20 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
         client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
           setViewerCount(client.remoteUsers.length);
-          if (mediaType === 'video' && remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current);
+          if (mediaType === 'video') {
+            setRemoteCameraOn(true);
+            if (remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current);
+          }
           if (mediaType === 'audio' && user.audioTrack) user.audioTrack.play();
         });
-        client.on('user-unpublished', () => setViewerCount(client.remoteUsers.length));
+        client.on('user-unpublished', (_user: IAgoraRTCRemoteUser, mediaType: 'audio'|'video') => {
+          setViewerCount(client.remoteUsers.length);
+          if (mediaType === 'video') setRemoteCameraOn(false);
+        });
         client.on('user-left', () => setViewerCount(client.remoteUsers.length));
         for (const user of client.remoteUsers) {
           if (user.hasVideo || user.hasAudio) {
-            if (user.hasVideo) { await client.subscribe(user, 'video'); if (remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current); }
+            if (user.hasVideo) { await client.subscribe(user, 'video'); setRemoteCameraOn(true); if (remoteVideoRef.current && user.videoTrack) user.videoTrack.play(remoteVideoRef.current); }
             if (user.hasAudio) { await client.subscribe(user, 'audio'); user.audioTrack?.play(); }
           }
         }
@@ -104,9 +126,16 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       return;
     }
     const next = !cameraOn;
-    await camRef.current.setEnabled(next);
-    setCameraOn(next);
-    if (next && localVideoRef.current) camRef.current.play(localVideoRef.current);
+    if (next) {
+      await camRef.current.setEnabled(true);
+      await clientRef.current.publish([camRef.current]);
+      setCameraOn(true);
+      if (localVideoRef.current) camRef.current.play(localVideoRef.current);
+    } else {
+      await clientRef.current.unpublish([camRef.current]);
+      await camRef.current.setEnabled(false);
+      setCameraOn(false);
+    }
   };
 
   const rotateCamera = async () => {
@@ -137,10 +166,36 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
 
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   const endBroadcast = () => { setEndConfirmOpen(false); onClose(); };
+  const addHeart = async () => {
+    try {
+      const r = await api.post('/api/live/heart', { roomId: room.id });
+      const next = Number(r.data?.hearts);
+      setLikes(Number.isFinite(next) ? next : v => v + 1);
+    } catch { setLikes(v => v + 1); }
+    const id = Date.now();
+    setFloatingHearts(v => [...v.slice(-5), id]);
+    window.setTimeout(() => setFloatingHearts(v => v.filter(x => x !== id)), 900);
+  };
 
-  return <div className="solo-live reference-solo-live">
+  const lastTapRef = useRef(0);
+  const handleTouchLike = (e: TouchEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button,input,textarea')) return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 360) { void addHeart(); lastTapRef.current = 0; }
+    else lastTapRef.current = now;
+  };
+
+  const handleDoubleClickLike = (e: MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button,input,textarea')) return;
+    void addHeart();
+  };
+
+
+  return <div className={`solo-live reference-solo-live ${room.isHost ? 'host-live' : 'viewer-live'}`} onTouchEnd={handleTouchLike} onDoubleClick={handleDoubleClickLike}>
     <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''}`} />
-    {((room.isHost && !cameraOn) || (!room.isHost && !connected)) && <div className="solo-live-background" style={hostAvatar ? { backgroundImage: `url(${hostAvatar})` } : undefined}><div className="solo-live-background-shade" /></div>}
+    {((room.isHost && !cameraOn) || (!room.isHost && !remoteCameraOn)) && <div className="solo-live-background" style={hostAvatar ? { backgroundImage: `url(${hostAvatar})` } : undefined}><div className="solo-live-background-shade" /></div>}
     <div className="solo-live-shade" />
 
     <header className="solo-live-top">
@@ -166,11 +221,12 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
       <span><Heart className={liked ? 'liked' : ''} fill={liked ? 'currentColor' : 'none'} /> <b>{likes}</b><small>Likes</small></span>
     </div>
 
-    {room.isHost && (!cameraOn || !micOn) && <div className="solo-camera-off">
-      {cameraOn ? <div className="solo-status-icon"><MicOff /></div> : <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+    {((room.isHost && (!cameraOn || !micOn)) || (!room.isHost && !remoteCameraOn)) && <div className="solo-camera-off">
+      {!cameraOn && <div className="solo-camera-off-avatar">{hostAvatar ? <img src={hostAvatar} alt="" /> : <span>{displayHostName.slice(0,1).toUpperCase()}</span>}</div>}
+      {room.isHost && cameraOn && !micOn && <div className="solo-status-icon"><MicOff /></div>}
       {!cameraOn && <b>Camera is off</b>}
-      {cameraOn && !micOn && <b>Microphone is off</b>}
-      <span>{micOn ? 'Your audio is live' : 'Your microphone is off'}</span>
+      {room.isHost && cameraOn && !micOn && <b>Microphone is off</b>}
+      <span>{room.isHost ? (micOn ? 'Your audio is live' : 'Your microphone is off') : 'Camera is off'}</span>
     </div>}
     {!room.isHost && !connected && <div className="solo-joining">Joining live…</div>}
 
@@ -193,11 +249,11 @@ export function AgoraLiveRoom({ room, onClose }: { room: Room; onClose: () => vo
         <button className={filterOn ? 'solo-round active' : 'solo-round'} onClick={() => setFilterOn(v => !v)} aria-label="Filter"><Sparkles /></button>
         <button className="solo-round" onClick={() => setMoreOpen(v => !v)} aria-label="More">⋯</button>
       </> : <>
-        <button className="solo-round" onClick={() => setLiked(v => { const n = !v; setLikes(x => Math.max(0, x + (n ? 1 : -1))); return n; })}><Heart fill={liked ? 'currentColor' : 'none'} /></button>
-        <button className="solo-round" onClick={() => setInviteOpen(v => !v)}><Sparkles /></button>
-        <button className="solo-round danger" onClick={onClose} aria-label="Leave"><PhoneOff /></button>
+        <button className="solo-viewer-gift" onClick={() => setGiftOpen(v => !v)} aria-label="Send gift"><Gift /></button>
       </>}
     </div>
+    <div className="solo-floating-hearts" aria-hidden="true">{floatingHearts.map(id => <Heart key={id} fill="currentColor" className="solo-floating-heart" />)}</div>
+    {giftOpen && !room.isHost && <div className="solo-gift-pop"><b><Gift /> Gifts</b><span>Choose a gift to send to this host.</span><button onClick={() => setGiftOpen(false)}>Close</button></div>}
     {moreOpen && room.isHost && <div className="solo-more-pop"><b>More Controls</b><button onClick={() => setMoreOpen(false)}>Beauty / Effects</button><button onClick={() => setMoreOpen(false)}>Live Settings</button><button onClick={() => setMoreOpen(false)}>Close</button></div>}
 
     {inviteOpen && <div className="solo-invite-pop"><b><UsersRound /> Invite hosts</b><span>Available hosts will appear here.</span><button onClick={() => setInviteOpen(false)}>Close</button></div>}

@@ -277,6 +277,7 @@ app.post('/api/live/join', asyncRoute(async (req, res) => {
   const host = await buildLiveHost(String(room.hostId), roomId);
   return res.json({ success: true, membership, room: { ...room, host, topSupporters: host.topSupporters }, agora: { ...token, channel: room.channel } });
 }));
+app.get('/api/live/state/:roomId', asyncRoute(async (req, res) => { const room: any = await get('live_rooms', String(req.params.roomId)); if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' }); return res.json({ success: true, hearts: Number(room.hearts || 0), viewerCount: Number(room.viewerCount || 0), status: room.status }); }));
 app.post('/api/live/token', asyncRoute(async (req, res) => {
   const roomId = String(req.body?.roomId || ''); const room: any = await get('live_rooms', roomId);
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
