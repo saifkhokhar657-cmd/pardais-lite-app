@@ -466,7 +466,26 @@ app.post('/api/withdrawals', asyncRoute(async (req,res)=>{const userId=req.user!
 app.post('/api/pk/create', asyncRoute(async (req,res)=>{const id=await add('pk_matches',{...req.body,hostId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,matchId:id,status:'pending'});}));
 app.post('/api/comments', asyncRoute(async(req,res)=>{const text=String(req.body?.text||'').trim(),targetId=String(req.body?.targetId||'');if(!targetId||!text)return res.status(400).json({error:'targetId and text are required'});const id=await add('comments',{userId:req.user!.uid,targetId,text});return res.status(201).json({success:true,id});}));
 app.get('/api/comments/:targetId', asyncRoute(async(req,res)=>res.json({success:true,items:await list('comments',{targetId:String(req.params.targetId)},100)})));
-app.post('/api/moderation', asyncRoute(async(req,res)=>{const action=String(req.body?.action||'');if(!['moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});const targetUserId=String(req.body?.targetUserId||'');const id=await add('moderation_actions',{...req.body,actorId:req.user!.uid,targetUserId,action,status:action==='report'?'pending':'completed'});if(action==='block')await add('blocks',{blockerId:req.user!.uid,blockedUserId:targetUserId});return res.status(201).json({success:true,actionId:id,action});}));
+app.post('/api/moderation', asyncRoute(async(req,res)=>{
+  const action=String(req.body?.action||'');
+  if(!['moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});
+  const targetUserId=String(req.body?.targetUserId||''); const roomId=String(req.body?.roomId||'');
+  const id=await add('moderation_actions',{...req.body,actorId:req.user!.uid,targetUserId,action,status:action==='report'?'pending':'completed'});
+  if(action==='block')await add('blocks',{blockerId:req.user!.uid,blockedUserId:targetUserId});
+  if(action==='moderator' && roomId){
+    const room:any=await get('live_rooms',roomId);
+    if(room && String(room.hostId)===String(req.user!.uid)){ const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10); for(const row of rows) await update('live_members',String(row.id),{moderator:true}); }
+  }
+  if(action==='kick' && roomId){
+    const room:any=await get('live_rooms',roomId);
+    if(room && String(room.hostId)===String(req.user!.uid)){
+      const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10);
+      for(const row of rows) await remove('live_members',String(row.id));
+      if(rows.length){ const ref=db.collection('live_rooms').doc(roomId); await db.runTransaction(async(tx:Transaction)=>{const snap=await tx.get(ref);if(snap.exists)tx.update(ref,{viewerCount:Math.max(0,Number(snap.data()?.viewerCount||0)-rows.length),updatedAt:now()});}); }
+    }
+  }
+  return res.status(201).json({success:true,actionId:id,action});
+}));
 app.post('/api/invites', asyncRoute(async(req,res)=>{const id=await add('invites',{...req.body,fromUserId:req.user!.uid,status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
 app.get('/api/live/outgoing-invites/:roomId', asyncRoute(async (req, res) => {
   const roomId = String(req.params.roomId);
@@ -475,10 +494,11 @@ app.get('/api/live/outgoing-invites/:roomId', asyncRoute(async (req, res) => {
   return res.json({ success: true, items });
 }));
 app.get('/api/live/incoming-invites', asyncRoute(async (req, res) => {
-  const rows: any[] = await list('invites', { toUserId: req.user!.uid, status: 'pending', type: 'cohost' }, 20);
-  const items = await Promise.all(rows.map(async (invite:any) => {
+  const rows: any[] = await list('invites', { toUserId: req.user!.uid, status: 'pending' }, 30);
+  const liveRows = rows.filter((invite:any) => ['cohost','guest'].includes(String(invite.type || '').toLowerCase()));
+  const items = await Promise.all(liveRows.map(async (invite:any) => {
     const from = await buildLiveHost(String(invite.fromUserId || ''), String(invite.roomId || ''));
-    return { ...invite, fromUser: from };
+    return { ...invite, fromUser: from, inviteType: String(invite.type || '').toLowerCase() };
   }));
   return res.json({ success: true, items });
 }));
@@ -552,6 +572,70 @@ app.post('/api/live/guest-invite', asyncRoute(async(req,res)=>{
   if (duplicate) return res.json({ success: true, inviteId: duplicate.id, status: 'pending' });
   const id = await add('invites', { roomId, toUserId, fromUserId: req.user!.uid, type: 'guest', status: 'pending', role: 'guest' });
   return res.status(201).json({ success: true, inviteId: id, status: 'pending' });
+}));
+app.post('/api/live/guest-invite/respond', asyncRoute(async(req,res)=>{
+  const inviteId = String(req.body?.inviteId || '');
+  const status = String(req.body?.status || '');
+  if (!inviteId || !['accepted','rejected'].includes(status)) return res.status(400).json({ error: 'valid inviteId and status are required' });
+  const invite:any = await get('invites', inviteId);
+  if (!invite || String(invite.type || '') !== 'guest') return res.status(404).json({ error: 'guest invite not found' });
+  if (String(invite.toUserId) !== String(req.user!.uid)) return res.status(403).json({ error: 'not your invite' });
+  if (invite.status !== 'pending') return res.status(409).json({ error: 'invite is no longer pending' });
+  if (status === 'rejected') { await update('invites', inviteId, { status:'rejected', respondedAt:now() }); return res.json({ success:true, status:'rejected' }); }
+  const room:any = await get('live_rooms', String(invite.roomId));
+  if (!room || room.status !== 'live') return res.status(409).json({ error:'host broadcast has ended' });
+  const members:any[] = await list('live_members', { roomId:String(room.id) }, 100);
+  const guests = members.filter((m:any)=>['guest','cohost'].includes(String(m.role||'').toLowerCase()));
+  if (guests.length >= 8) return res.status(409).json({ error:'guest seats are full' });
+  const own = members.find((m:any)=>String(m.userId)===String(req.user!.uid));
+  if (own) await update('live_members', String(own.id), { role:'guest', agoraUid:numericAgoraUid(req.user!.uid) });
+  else await add('live_members', { roomId:String(room.id), userId:req.user!.uid, role:'guest', agoraUid:numericAgoraUid(req.user!.uid) });
+  const u:any = await get('users', req.user!.uid); const p:any = await get('profiles', req.user!.uid);
+  const name = p?.name || (p?.firstName ? `${p.firstName} ${p.lastName||''}`.trim() : (u?.name || 'Pardais User'));
+  await add('live_entries', { roomId:String(room.id), userId:req.user!.uid, role:'guest', name, username:p?.username||u?.username||'', avatar:p?.avatar||u?.avatar||'', level:Math.max(1,Number(p?.level??u?.level??1)) });
+  await update('invites', inviteId, { status:'accepted', respondedAt:now(), acceptedAt:now() });
+  const token = buildRtcToken(String(room.channel), req.user!.uid, 'host');
+  const host = await buildLiveHost(String(room.hostId), String(room.id));
+  return res.json({ success:true, status:'accepted', room:{...room, host, topSupporters:host.topSupporters, displayMode:'GUEST'}, agora:{...token,channel:room.channel} });
+}));
+app.get('/api/live/stage/:roomId', asyncRoute(async(req,res)=>{
+  const roomId=String(req.params.roomId||''); const room:any=await get('live_rooms',roomId); if(!room||room.status!=='live') return res.status(404).json({error:'live room not found'});
+  const members:any[]=await list('live_members',{roomId},100);
+  const stage=await Promise.all(members.filter((m:any)=>['host','cohost','guest'].includes(String(m.role||'').toLowerCase())).map(async(m:any)=>{
+    const u:any=await get('users',String(m.userId)); const p:any=await get('profiles',String(m.userId));
+    return {userId:String(m.userId),role:String(m.role||'guest'),agoraUid:Number(m.agoraUid||numericAgoraUid(String(m.userId))),name:p?.name||(p?.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User')),username:p?.username||u?.username||'',avatar:p?.avatar||u?.avatar||'',level:Number(p?.level??u?.level??1)};
+  }));
+  return res.json({success:true,roomId,items:stage});
+}));
+app.post('/api/live/pk-invite', asyncRoute(async(req,res)=>{
+  const roomId=String(req.body?.roomId||''), toUserId=String(req.body?.toUserId||''); const room:any=await get('live_rooms',roomId); if(!room||room.status!=='live') return res.status(404).json({error:'live room not found'});
+  const me=String(req.user!.uid); const members:any[]=await list('live_members',{roomId},100);
+  const meMember=members.find((m:any)=>String(m.userId)===me), target=members.find((m:any)=>String(m.userId)===toUserId);
+  if(!meMember || !['host','cohost'].includes(String(meMember.role||''))) return res.status(403).json({error:'only host or co-host can request PK'});
+  if(!target || !['host','cohost'].includes(String(target.role||''))) return res.status(400).json({error:'target is not the co-host'});
+  const duplicate=(await list('pk_invites',{roomId,fromUserId:me,toUserId,status:'pending'},5))[0]; if(duplicate) return res.json({success:true,inviteId:duplicate.id,status:'pending'});
+  const id=await add('pk_invites',{roomId,fromUserId:me,toUserId,type:'pk',status:'pending'}); return res.status(201).json({success:true,inviteId:id,status:'pending'});
+}));
+app.get('/api/live/pk-invites/incoming', asyncRoute(async(req,res)=>{ const rows=await list('pk_invites',{toUserId:req.user!.uid,status:'pending'},20); const items=await Promise.all(rows.map(async(i:any)=>({...i,fromUser:await buildLiveHost(String(i.fromUserId||''),String(i.roomId||''))}))); return res.json({success:true,items}); }));
+app.post('/api/live/pk-invite/respond', asyncRoute(async(req,res)=>{
+  const inviteId=String(req.body?.inviteId||''), status=String(req.body?.status||''); if(!inviteId||!['accepted','rejected'].includes(status)) return res.status(400).json({error:'valid inviteId and status are required'});
+  const invite:any=await get('pk_invites',inviteId); if(!invite||String(invite.toUserId)!==String(req.user!.uid)) return res.status(404).json({error:'PK invite not found'}); if(invite.status!=='pending') return res.status(409).json({error:'PK invite is no longer pending'});
+  if(status==='rejected'){await update('pk_invites',inviteId,{status:'rejected',respondedAt:now()});return res.json({success:true,status:'rejected'});} const room:any=await get('live_rooms',String(invite.roomId)); if(!room||room.status!=='live') return res.status(409).json({error:'live room has ended'});
+  const matchId=await add('pk_matches',{roomId:String(room.id),hostId:String(invite.fromUserId),opponentId:String(invite.toUserId),status:'active',startedAt:now()}); await update('pk_invites',inviteId,{status:'accepted',respondedAt:now(),matchId}); return res.json({success:true,status:'accepted',matchId,roomId:String(room.id)});
+}));
+app.post('/api/live/stage/token', asyncRoute(async(req,res)=>{
+  const roomId=String(req.body?.roomId||''); const room:any=await get('live_rooms',roomId);
+  if(!room||room.status!=='live') return res.status(404).json({error:'live room not found'});
+  const member:any=(await list('live_members',{roomId,userId:req.user!.uid},10))[0];
+  if(!member || !['host','cohost','guest'].includes(String(member.role||'').toLowerCase())) return res.status(403).json({error:'you are not a stage participant'});
+  const token=buildRtcToken(String(room.channel),req.user!.uid,'host');
+  return res.json({success:true,role:member.role,channel:room.channel,...token});
+}));
+app.post('/api/live/stage/leave', asyncRoute(async(req,res)=>{
+  const roomId=String(req.body?.roomId||''); const room:any=await get('live_rooms',roomId); if(!room) return res.status(404).json({error:'room not found'});
+  if(String(room.hostId)===String(req.user!.uid)) return res.status(400).json({error:'host must end the broadcast'});
+  const rows:any[]=await list('live_members',{roomId,userId:req.user!.uid},10); for(const row of rows) await update('live_members',String(row.id),{role:'audience'});
+  return res.json({success:true,status:'left-stage'});
 }));
 app.post('/api/invites/:id/respond', asyncRoute(async(req,res)=>{const invite:any=await get('invites',String(req.params.id));if(!invite)return res.status(404).json({error:'invite not found'});if(invite.toUserId!==req.user!.uid)return res.status(403).json({error:'not your invite'});const status=String(req.body?.status||'');if(!['accepted','rejected','cancelled'].includes(status))return res.status(400).json({error:'invalid invite response'});await update('invites',String(req.params.id),{status});return res.json({success:true,inviteId:String(req.params.id),status});}));
 app.post('/api/pk/invites', asyncRoute(async(req,res)=>{const id=await add('pk_invites',{...req.body,fromUserId:req.user!.uid,type:'pk',status:'pending'});return res.status(201).json({success:true,inviteId:id,status:'pending'});}));
