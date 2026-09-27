@@ -26,7 +26,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [selectedGift, setSelectedGift] = useState<any>(null);
   const [floatingHearts, setFloatingHearts] = useState<number[]>([]);
   const [comment, setComment] = useState('');
-  type LiveComment = { id: string; userId: string; name: string; username?: string; avatar?: string; level: number; text: string; isHost?: boolean };
+  type LiveComment = { id: string; userId: string; name: string; username?: string; avatar?: string; level: number; text: string; isHost?: boolean; moderator?: boolean };
   const [comments, setComments] = useState<LiveComment[]>([]);
   const commentsScrollRef = useRef<HTMLDivElement | null>(null);
   const commentUserCache = useRef(new Map<string, LiveComment>());
