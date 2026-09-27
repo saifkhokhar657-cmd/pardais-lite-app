@@ -63,6 +63,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [stageMembers, setStageMembers] = useState<any[]>([]);
   const [selectedStageMember, setSelectedStageMember] = useState<any | null>(null);
   const stageModeLockedRef = useRef(false);
+  const explicitStageExitRef = useRef(false);
   const [pkInvites, setPkInvites] = useState<any[]>([]);
   const [pkBusy, setPkBusy] = useState(false);
   const [liveDisplayMode, setLiveDisplayMode] = useState(String((room as any).displayMode || 'SOLO').toUpperCase());
@@ -81,7 +82,10 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     .sort((a:any,b:any) => { const rank:any={host:0,cohost:1,guest:2}; return (rank[String(a.role||'guest').toLowerCase()]??9)-(rank[String(b.role||'guest').toLowerCase()]??9); });
   const guestCount = stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'guest').length;
   const isStageMode = stageActive || ['cohost','guest'].includes(stageRole) || ['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode);
-  const isLargeGuestLayout = guestCount >= 4 || stageParticipants.length >= 5;
+  // The 8-seat/large guest layout is ONLY unlocked by four or more actual
+  // guest seats. Do not infer it from total stage-member count because stale
+  // co-host/audience records can otherwise force the large layout early.
+  const isLargeGuestLayout = guestCount >= 4;
   const isPkMode = liveDisplayMode === 'PK';
 
   const hostName = room.host?.name || room.title || 'Pardais Live Official Pakistan';
@@ -108,23 +112,16 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         const r = await api.get(`/api/live/state/${room.id}`);
         if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
         if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
-        // IMPORTANT: once a stage is active, never let the generic live-state
-        // endpoint push the UI back to SOLO while Firestore/Agora is catching up.
-        // The live-state endpoint can legitimately lag behind the stage transition.
+        // The generic live-state endpoint is intentionally READ-ONLY for stage UI.
+        // It can briefly report SOLO while the stage membership transaction is
+        // propagating. That transient value must NEVER switch an already-mounted
+        // stage back to the Solo renderer. Stage transitions are controlled only
+        // by the stage snapshot below or by an explicit leave/remove action.
         const stateMode = String(r.data?.displayMode || '').toUpperCase();
-        const validStageMode = ['ONE VS ONE','GUEST','PK'].includes(stateMode);
-        const stageLocked = stageModeLockedRef.current || stageActive || ['cohost','guest'].includes(stageRole);
-        // Valid stage modes are always allowed to advance the stage (e.g.
-        // ONE VS ONE -> PK), but SOLO is never allowed to collapse an active
-        // stage. SOLO is only selected when no stage has ever been activated
-        // for this room/session.
-        if (validStageMode) {
+        if (['ONE VS ONE','GUEST','PK'].includes(stateMode)) {
           stageModeLockedRef.current = true;
           setLiveDisplayMode(stateMode);
           setStageActive(true);
-        } else if (!stageLocked && stateMode === 'SOLO') {
-          setLiveDisplayMode('SOLO');
-          setStageActive(false);
         }
       } catch (e: any) {
         if (!room.isHost && (e?.response?.status === 404 || String(e?.message || '').includes('404'))) setBroadcastEnded(true);
@@ -601,9 +598,17 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/join', { roomId: room.id });
       if (r.data?.room && r.data?.agora && onSwitchRoom) {
         stageModeLockedRef.current = false;
+        explicitStageExitRef.current = false;
+        setStageActive(false);
+        setLiveDisplayMode('SOLO');
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, displayMode: 'SOLO', stageRole: '' });
       }
     } catch { onClose(); }
+  };
+
+  const stageParticipantsSafeOnlyHost = (items:any[]) => {
+    const stage = items.filter((m:any) => ['host','cohost','guest'].includes(String(m.role || '').toLowerCase()));
+    return stage.length <= 1 && stage.every((m:any) => String(m.role || '').toLowerCase() === 'host');
   };
 
   const refreshStage = async () => {
@@ -623,6 +628,13 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           stageModeLockedRef.current = true;
           setLiveDisplayMode(mode);
           setStageActive(true);
+        } else if (mode === 'SOLO' && explicitStageExitRef.current && stageParticipantsSafeOnlyHost(items)) {
+          // Only an explicit stage exit/removal sequence may return the host to Solo.
+          // A transient/stale SOLO response from the generic backend must never do it.
+          explicitStageExitRef.current = false;
+          stageModeLockedRef.current = false;
+          setLiveDisplayMode('SOLO');
+          setStageActive(false);
         } else if (!stageModeLockedRef.current && !stageActive && !['cohost','guest'].includes(stageRole)) {
           setLiveDisplayMode('SOLO');
           setStageActive(false);
@@ -718,12 +730,49 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   };
 
   const leaveStageMember = async (member:any) => {
-    if (!member || String(member.userId) !== String(auth.currentUser?.uid || '')) return;
+    if (!member) return;
+    const me = String(auth.currentUser?.uid || '');
+    const targetId = String(member.userId || '');
+
     try {
+      // Host can remove another participant one seat at a time. This is the only
+      // path that removes a guest/co-host without ending the broadcast.
+      if (room.isHost && targetId !== me) {
+        await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: targetId, action: 'remove_seat' });
+        setSelectedStageMember(null);
+        const remaining = stageParticipants.filter((m:any) => String(m.userId) !== targetId);
+        if (remaining.filter((m:any) => ['cohost','guest'].includes(String(m.role || '').toLowerCase())).length === 0) {
+          explicitStageExitRef.current = true;
+        }
+        await refreshStage();
+        return;
+      }
+
+      // Host cannot jump directly from a multi-person stage to Solo by tapping
+      // their own X. All guests/co-hosts must be removed/leave first.
+      if (room.isHost && targetId === me) {
+        const others = stageParticipants.filter((m:any) => String(m.userId) !== me && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
+        if (others.length) {
+          setInviteNotice('Remove the guests/co-host first. Then the host returns to Solo.');
+          window.setTimeout(() => setInviteNotice(''), 2800);
+          return;
+        }
+        explicitStageExitRef.current = true;
+        await api.post('/api/live/stage/leave', { roomId: room.id });
+        stageModeLockedRef.current = false;
+        setLiveDisplayMode('SOLO');
+        setStageActive(false);
+        setStageMembers(v => v.filter((m:any) => String(m.userId) === me || String(m.role || '').toLowerCase() === 'host'));
+        return;
+      }
+
+      // A guest/co-host leaving their seat returns to the same broadcast as an
+      // audience member; it must NOT close the live room.
       await api.post('/api/live/stage/leave', { roomId: room.id });
-      if (room.isHost) { stageModeLockedRef.current = false; setLiveDisplayMode('SOLO'); setStageActive(false); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
-      else onClose();
-    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.')); }
+      await returnToAudience();
+    } catch (e:any) {
+      window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.'));
+    }
   };
 
   const invitePk = async () => {
@@ -786,12 +835,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     try {
       const r = await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: String(selectedStageMember.userId), action });
       if (action === 'remove_seat') {
-        setStageMembers(v => v.filter((m:any) => String(m.userId) !== String(selectedStageMember.userId)));
-        await refreshStage();
-        // Removing the last guest/seat does not itself prove that the backend
-        // has finished its stage transaction. Keep the current stage until an
-        // explicit host stage-leave action changes it.
+        const targetId = String(selectedStageMember.userId);
+        const remainingExtras = stageParticipants.filter((m:any) => String(m.userId) !== targetId && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
+        if (remainingExtras.length === 0) explicitStageExitRef.current = true;
+        setStageMembers(v => v.filter((m:any) => String(m.userId) !== targetId));
         setSelectedStageMember(null);
+        await refreshStage();
       } else {
         await refreshStage();
         setSelectedStageMember(null);
@@ -806,9 +855,16 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   };
 
 
-  const stageByUid: Map<string, any> = new Map<string, any>(stageParticipants.map((m:any) => [String(m.agoraUid || ''), m] as [string, any]));
-  const stageHost: any = stageParticipants.find((m:any) => String(m.role || '').toLowerCase() === 'host') || stageParticipants[0];
-  const stageOthers: any[] = stageParticipants.filter((m:any) => String(m.userId) !== String(stageHost?.userId));
+  // Always build the visual order explicitly: Host first, then co-host(s),
+  // then guests. Firestore collection order is not a UI ordering contract.
+  const orderedStageParticipants = [
+    ...stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'host'),
+    ...stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'cohost'),
+    ...stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'guest'),
+  ];
+  const stageByUid: Map<string, any> = new Map<string, any>(orderedStageParticipants.map((m:any) => [String(m.agoraUid || ''), m] as [string, any]));
+  const stageHost: any = orderedStageParticipants.find((m:any) => String(m.role || '').toLowerCase() === 'host') || orderedStageParticipants[0];
+  const stageOthers: any[] = orderedStageParticipants.filter((m:any) => String(m.userId) !== String(stageHost?.userId));
   const currentUserId = String(auth.currentUser?.uid || '');
   const localStageMember = stageParticipants.find((m:any) => String(m.userId) === currentUserId);
   const stageMemberForRemote = (u:IAgoraRTCRemoteUser) => stageByUid.get(String(u.uid));
@@ -830,7 +886,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       </div> : !isLargeGuestLayout && liveDisplayMode === 'ONE VS ONE' && stageParticipants.length === 2 ? <div className="one-vs-one-stage">
         {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : !isLargeGuestLayout ? <div className={`guest-stage-grid count-${stageParticipants.length}`}>
-        {stageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
+        {orderedStageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : <div className="large-guest-stage-body">
         <div className="large-guest-host">{stageHost&&(()=>{const mine=String(stageHost.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div></div>})()}</div>
         <div className="live-stage-seat-grid-8">{Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`empty-${i}`} onClick={() => member && room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}</div>
@@ -865,7 +921,24 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || '').slice(0,1).toUpperCase()}</span>}</div>)}</div>
       {inviteNotice && <div className="solo-invite-notice">{inviteNotice}</div>}<div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
-        <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
+        <button onClick={() => {
+          if (isStageMode) {
+            const me = String(auth.currentUser?.uid || '');
+            if (room.isHost) {
+              const extras = stageParticipants.filter((m:any) => String(m.userId) !== me && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
+              if (extras.length) {
+                setInviteNotice('Remove/leave all stage participants first. Then you can close the broadcast.');
+                window.setTimeout(() => setInviteNotice(''), 2800);
+              } else {
+                void leaveStageMember(stageHost || { userId: me, role: 'host' });
+              }
+            } else {
+              void leaveStageMember(localStageMember || { userId: me, role: stageRole });
+            }
+            return;
+          }
+          if (room.isHost) setEndConfirmOpen(true); else onClose();
+        }} aria-label={room.isHost ? (isStageMode ? 'Leave stage' : 'End broadcast') : (isStageMode ? 'Leave stage' : 'Close')}><X /></button>
       </div>
     </header>
 
