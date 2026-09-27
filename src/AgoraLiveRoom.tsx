@@ -63,7 +63,11 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [stageMembers, setStageMembers] = useState<any[]>([]);
   const [selectedStageMember, setSelectedStageMember] = useState<any | null>(null);
   const stageModeLockedRef = useRef(false);
-  const explicitStageExitRef = useRef(false);
+  // A host starts in a real Solo session. Do not resurrect stale stage members
+  // from Firestore when the Solo screen remounts (for example after Android Back).
+  // Stage synchronization becomes armed only after an explicit accepted invite / PK
+  // transition, or when this user joined as a stage participant.
+  const stageSyncArmedRef = useRef(false);
   const [pkInvites, setPkInvites] = useState<any[]>([]);
   const [pkBusy, setPkBusy] = useState(false);
   const [liveDisplayMode, setLiveDisplayMode] = useState(String((room as any).displayMode || 'SOLO').toUpperCase());
@@ -71,6 +75,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     const mode = String((room as any).displayMode || '').toUpperCase();
     const active = ['ONE VS ONE','GUEST','PK'].includes(mode) || ['cohost','guest'].includes(String((room as any).stageRole || '').toLowerCase());
     stageModeLockedRef.current = active;
+    stageSyncArmedRef.current = active || !Boolean(room.isHost);
     return active;
   });
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
@@ -118,8 +123,10 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         // stage back to the Solo renderer. Stage transitions are controlled only
         // by the stage snapshot below or by an explicit leave/remove action.
         const stateMode = String(r.data?.displayMode || '').toUpperCase();
-        if (['ONE VS ONE','GUEST','PK'].includes(stateMode)) {
+        if (['ONE VS ONE','GUEST','PK'].includes(stateMode) &&
+            (stageSyncArmedRef.current || stageModeLockedRef.current || !room.isHost)) {
           stageModeLockedRef.current = true;
+          stageSyncArmedRef.current = true;
           setLiveDisplayMode(stateMode);
           setStageActive(true);
         }
@@ -198,7 +205,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           const previous = seenInviteStatus.current.get(id);
           if (previous && previous !== status && (status === 'accepted' || status === 'rejected')) {
             setInviteNotice(status === 'accepted' ? 'Invite accepted — One VS One is ready.' : 'Request rejected — you remain in Solo Live.');
-            if (status === 'accepted') { stageModeLockedRef.current = true; setLiveDisplayMode('ONE VS ONE'); setStageActive(true); void refreshStage(); }
+            if (status === 'accepted') { stageModeLockedRef.current = true; stageSyncArmedRef.current = true; setLiveDisplayMode('ONE VS ONE'); setStageActive(true); void refreshStage(); }
             window.setTimeout(() => setInviteNotice(''), 3500);
           }
           seenInviteStatus.current.set(id, status);
@@ -507,6 +514,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
         stageModeLockedRef.current = true;
+        stageSyncArmedRef.current = true;
         setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'cohost', displayMode: 'ONE VS ONE' });
@@ -525,6 +533,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
         stageModeLockedRef.current = true;
+        stageSyncArmedRef.current = true;
         setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'guest', displayMode: 'GUEST' });
@@ -541,6 +550,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     try {
       const r = await api.post('/api/live/pk-invite/respond', { inviteId: invite.id, status });
       setPkInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
+      if (status === 'accepted') { stageModeLockedRef.current = true; stageSyncArmedRef.current = true; setLiveDisplayMode('PK'); setStageActive(true); void refreshStage(); }
       setInviteNotice(status === 'accepted' ? `PK started${r.data?.matchId ? ` · Match ${r.data.matchId.slice(0,6)}` : ''}.` : 'PK request rejected.');
       window.setTimeout(() => setInviteNotice(''), 3000);
     } catch (e:any) {
@@ -598,20 +608,19 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/join', { roomId: room.id });
       if (r.data?.room && r.data?.agora && onSwitchRoom) {
         stageModeLockedRef.current = false;
-        explicitStageExitRef.current = false;
-        setStageActive(false);
-        setLiveDisplayMode('SOLO');
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, displayMode: 'SOLO', stageRole: '' });
       }
     } catch { onClose(); }
   };
 
-  const stageParticipantsSafeOnlyHost = (items:any[]) => {
-    const stage = items.filter((m:any) => ['host','cohost','guest'].includes(String(m.role || '').toLowerCase()));
-    return stage.length <= 1 && stage.every((m:any) => String(m.role || '').toLowerCase() === 'host');
-  };
-
   const refreshStage = async () => {
+    // Do not query/apply the stage snapshot for a host who is currently in Solo.
+    // Old guest/co-host records can remain in Firestore after a navigation/remount;
+    // allowing them to re-arm the renderer is what caused Solo -> 8-seat blinking.
+    if (room.isHost && !stageSyncArmedRef.current && !stageModeLockedRef.current &&
+        !['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode)) {
+      return null;
+    }
     try {
       const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
       const items = Array.isArray(r.data?.items) ? r.data.items : [];
@@ -628,19 +637,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           stageModeLockedRef.current = true;
           setLiveDisplayMode(mode);
           setStageActive(true);
-        } else if (mode === 'SOLO' && explicitStageExitRef.current && stageParticipantsSafeOnlyHost(items)) {
-          // Only an explicit stage exit/removal sequence may return the host to Solo.
-          // A transient/stale SOLO response from the generic backend must never do it.
-          explicitStageExitRef.current = false;
-          stageModeLockedRef.current = false;
-          setLiveDisplayMode('SOLO');
-          setStageActive(false);
         } else if (!stageModeLockedRef.current && !stageActive && !['cohost','guest'].includes(stageRole)) {
           setLiveDisplayMode('SOLO');
           setStageActive(false);
         }
       }
-      if (stageRole && ['cohost','guest'].includes(stageRole)) { stageModeLockedRef.current = true; setStageActive(true); }
+      if (stageRole && ['cohost','guest'].includes(stageRole)) { stageModeLockedRef.current = true; stageSyncArmedRef.current = true; setStageActive(true); }
       return r.data;
     } catch { return null; }
   };
@@ -730,49 +732,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   };
 
   const leaveStageMember = async (member:any) => {
-    if (!member) return;
-    const me = String(auth.currentUser?.uid || '');
-    const targetId = String(member.userId || '');
-
+    if (!member || String(member.userId) !== String(auth.currentUser?.uid || '')) return;
     try {
-      // Host can remove another participant one seat at a time. This is the only
-      // path that removes a guest/co-host without ending the broadcast.
-      if (room.isHost && targetId !== me) {
-        await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: targetId, action: 'remove_seat' });
-        setSelectedStageMember(null);
-        const remaining = stageParticipants.filter((m:any) => String(m.userId) !== targetId);
-        if (remaining.filter((m:any) => ['cohost','guest'].includes(String(m.role || '').toLowerCase())).length === 0) {
-          explicitStageExitRef.current = true;
-        }
-        await refreshStage();
-        return;
-      }
-
-      // Host cannot jump directly from a multi-person stage to Solo by tapping
-      // their own X. All guests/co-hosts must be removed/leave first.
-      if (room.isHost && targetId === me) {
-        const others = stageParticipants.filter((m:any) => String(m.userId) !== me && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
-        if (others.length) {
-          setInviteNotice('Remove the guests/co-host first. Then the host returns to Solo.');
-          window.setTimeout(() => setInviteNotice(''), 2800);
-          return;
-        }
-        explicitStageExitRef.current = true;
-        await api.post('/api/live/stage/leave', { roomId: room.id });
-        stageModeLockedRef.current = false;
-        setLiveDisplayMode('SOLO');
-        setStageActive(false);
-        setStageMembers(v => v.filter((m:any) => String(m.userId) === me || String(m.role || '').toLowerCase() === 'host'));
-        return;
-      }
-
-      // A guest/co-host leaving their seat returns to the same broadcast as an
-      // audience member; it must NOT close the live room.
       await api.post('/api/live/stage/leave', { roomId: room.id });
-      await returnToAudience();
-    } catch (e:any) {
-      window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.'));
-    }
+      if (room.isHost) { stageModeLockedRef.current = false; stageSyncArmedRef.current = false; setLiveDisplayMode('SOLO'); setStageActive(false); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
+      else onClose();
+    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.')); }
   };
 
   const invitePk = async () => {
@@ -835,12 +800,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     try {
       const r = await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: String(selectedStageMember.userId), action });
       if (action === 'remove_seat') {
-        const targetId = String(selectedStageMember.userId);
-        const remainingExtras = stageParticipants.filter((m:any) => String(m.userId) !== targetId && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
-        if (remainingExtras.length === 0) explicitStageExitRef.current = true;
-        setStageMembers(v => v.filter((m:any) => String(m.userId) !== targetId));
-        setSelectedStageMember(null);
+        setStageMembers(v => v.filter((m:any) => String(m.userId) !== String(selectedStageMember.userId)));
         await refreshStage();
+        // Removing the last guest/seat does not itself prove that the backend
+        // has finished its stage transaction. Keep the current stage until an
+        // explicit host stage-leave action changes it.
+        setSelectedStageMember(null);
       } else {
         await refreshStage();
         setSelectedStageMember(null);
@@ -921,24 +886,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       <div className="solo-supporters">{((room.host?.topSupporters || room.topSupporters || []) as any[]).slice(0,3).map((s:any,i:number)=><div className="solo-supporter" key={s?.id || i}>{s?.avatarUrl || s?.avatar ? <img src={s.avatarUrl || s.avatar} alt="" /> : <span>{String(s?.name || '').slice(0,1).toUpperCase()}</span>}</div>)}</div>
       {inviteNotice && <div className="solo-invite-notice">{inviteNotice}</div>}<div className="solo-top-actions">
         <button onClick={() => void share()} aria-label="Share"><Share2 /></button>
-        <button onClick={() => {
-          if (isStageMode) {
-            const me = String(auth.currentUser?.uid || '');
-            if (room.isHost) {
-              const extras = stageParticipants.filter((m:any) => String(m.userId) !== me && ['cohost','guest'].includes(String(m.role || '').toLowerCase()));
-              if (extras.length) {
-                setInviteNotice('Remove/leave all stage participants first. Then you can close the broadcast.');
-                window.setTimeout(() => setInviteNotice(''), 2800);
-              } else {
-                void leaveStageMember(stageHost || { userId: me, role: 'host' });
-              }
-            } else {
-              void leaveStageMember(localStageMember || { userId: me, role: stageRole });
-            }
-            return;
-          }
-          if (room.isHost) setEndConfirmOpen(true); else onClose();
-        }} aria-label={room.isHost ? (isStageMode ? 'Leave stage' : 'End broadcast') : (isStageMode ? 'Leave stage' : 'Close')}><X /></button>
+        <button onClick={() => room.isHost ? setEndConfirmOpen(true) : onClose()} aria-label={room.isHost ? 'End broadcast' : 'Close'}><X /></button>
       </div>
     </header>
 
