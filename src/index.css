@@ -1593,3 +1593,155 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live.stage-live .live-stage-placeholder { transition:none!important; animation:none!important; }
 .reference-solo-live.stage-live .live-stage { transition:none!important; animation:none!important; }
 .reference-solo-live.stage-live .solo-live-video { visibility:hidden!important; }
+
+/* V57 — mobile guest/stage controls: compact single-row layout inside the 50% stage */
+.reference-solo-live.stage-live {
+  --stage-bottom-zone: 50% !important;
+}
+.reference-solo-live.stage-live .solo-stats {
+  top: 76px !important;
+  left: 8px !important;
+  right: 8px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  gap: 4px !important;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  background: transparent !important;
+  z-index: 70 !important;
+}
+.reference-solo-live.stage-live .solo-stats > span,
+.reference-solo-live.stage-live .solo-stats > .solo-viewer-stat {
+  min-width: 0 !important;
+  width: 100% !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  margin: 0 !important;
+  padding: 0 5px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  border-radius: 9px !important;
+  background: rgba(4,4,12,.48) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  overflow: hidden !important;
+}
+.reference-solo-live.stage-live .solo-stats svg {
+  width: 13px !important;
+  height: 13px !important;
+  flex: 0 0 13px !important;
+}
+.reference-solo-live.stage-live .solo-stats b { font-size: 11px !important; white-space: nowrap !important; }
+.reference-solo-live.stage-live .solo-stats small { display: block !important; font-size: 7px !important; opacity: .72 !important; white-space: nowrap !important; }
+
+/* Host identity tag sits on the host video instead of consuming header space. */
+.reference-solo-live.stage-live .stage-person-card,
+.reference-solo-live.stage-live .one-vs-one-panel,
+.reference-solo-live.stage-live .large-guest-host { position: relative !important; }
+.reference-solo-live.stage-live .stage-host-badge {
+  position: absolute !important;
+  top: 7px !important;
+  left: 7px !important;
+  z-index: 18 !important;
+  padding: 3px 7px !important;
+  border-radius: 7px !important;
+  background: rgba(170,65,220,.88) !important;
+  color: #fff !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  font-weight: 900 !important;
+  letter-spacing: .5px !important;
+  pointer-events: none !important;
+}
+
+/* Viewer: comment, gift and share all occupy one compact bottom row. */
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-comment-bar {
+  left: 8px !important;
+  right: 112px !important;
+  bottom: 8px !important;
+  height: 42px !important;
+  border-radius: 21px !important;
+  padding: 0 8px !important;
+  gap: 6px !important;
+  z-index: 80 !important;
+}
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-comment-bar > svg { width: 17px !important; }
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-comment-bar input { font-size: 12px !important; }
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-comment-bar button { width: 34px !important; height: 34px !important; }
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-bottom-actions {
+  left: auto !important;
+  right: 8px !important;
+  bottom: 8px !important;
+  width: 98px !important;
+  height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  z-index: 81 !important;
+}
+.reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-bottom-actions .solo-viewer-gift {
+  width: 42px !important;
+  height: 42px !important;
+  flex: 0 0 42px !important;
+}
+
+/* Invited guest/co-host: no duplicate bottom Share; mic + camera + gift stay beside comment. */
+.reference-solo-live.stage-live.stage-participant-live .solo-comment-bar {
+  left: 8px !important;
+  right: 154px !important;
+  bottom: 8px !important;
+  height: 42px !important;
+  border-radius: 21px !important;
+  padding: 0 8px !important;
+  gap: 5px !important;
+  z-index: 80 !important;
+}
+.reference-solo-live.stage-live.stage-participant-live .solo-comment-bar > svg { width: 17px !important; }
+.reference-solo-live.stage-live.stage-participant-live .solo-comment-bar input { font-size: 12px !important; }
+.reference-solo-live.stage-live.stage-participant-live .solo-comment-bar button { width: 32px !important; height: 32px !important; }
+.reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions {
+  left: auto !important;
+  right: 8px !important;
+  bottom: 8px !important;
+  width: 138px !important;
+  height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 5px !important;
+  z-index: 81 !important;
+}
+.reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions .stage-share { display: none !important; }
+.reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions .solo-round,
+.reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions .solo-viewer-gift {
+  width: 42px !important;
+  height: 42px !important;
+  flex: 0 0 42px !important;
+}
+.reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions svg { width: 19px !important; height: 19px !important; }
+
+/* Never restore the old 40% mobile stage split. */
+@media (max-width:430px) {
+  .reference-solo-live.stage-live { --stage-top: 64px !important; --stage-bottom-zone: 50% !important; }
+  .reference-solo-live.stage-live .solo-stats { top: 70px !important; left: 6px !important; right: 6px !important; gap: 3px !important; }
+  .reference-solo-live.stage-live .solo-stats > span,
+  .reference-solo-live.stage-live .solo-stats > .solo-viewer-stat { height: 31px !important; min-height: 31px !important; padding: 0 3px !important; border-radius: 8px !important; }
+  .reference-solo-live.stage-live .solo-stats svg { width: 11px !important; height: 11px !important; flex-basis: 11px !important; }
+  .reference-solo-live.stage-live .solo-stats b { font-size: 10px !important; }
+  .reference-solo-live.stage-live .solo-stats small { font-size: 6.5px !important; }
+  .reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-comment-bar { left: 6px !important; right: 104px !important; bottom: 7px !important; height: 39px !important; }
+  .reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-bottom-actions { right: 6px !important; bottom: 7px !important; width: 92px !important; height: 39px !important; gap: 4px !important; }
+  .reference-solo-live.stage-live.viewer-live:not(.stage-participant-live) .solo-bottom-actions .solo-viewer-gift { width: 39px !important; height: 39px !important; flex-basis: 39px !important; }
+  .reference-solo-live.stage-live.stage-participant-live .solo-comment-bar { left: 6px !important; right: 139px !important; bottom: 7px !important; height: 39px !important; }
+  .reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions { right: 6px !important; bottom: 7px !important; width: 127px !important; height: 39px !important; gap: 4px !important; }
+  .reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions .solo-round,
+  .reference-solo-live.stage-live.stage-participant-live .solo-bottom-actions .solo-viewer-gift { width: 39px !important; height: 39px !important; flex-basis: 39px !important; }
+}
+
+/* Viewer connection failures are recovered automatically; do not cover the stage with a red error card. */
+.reference-solo-live.viewer-live .solo-error { display:none !important; }

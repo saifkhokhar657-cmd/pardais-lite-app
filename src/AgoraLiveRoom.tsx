@@ -356,13 +356,13 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         setReconnecting(true);
         retryCount += 1;
         clearReconnect();
-        if (retryCount <= 4) {
-          reconnectTimerRef.current = window.setTimeout(() => { void connect().catch(() => {}); }, Math.min(10000, 1000 * retryCount));
-        } else {
-          setReconnecting(false);
-          setError('Live connection could not be restored. Please try again.');
-          try { window.dispatchEvent(new CustomEvent('pardais:app-error', { detail: { message: 'Live connection could not be restored. Please try again.' } })); } catch {}
-        }
+        // Keep reconnecting instead of showing a blocking red error after a
+        // handful of transient Agora failures. Viewers should remain in the
+        // live room while the connection is restored automatically.
+        setError('');
+        setReconnecting(true);
+        retryCount = Math.min(retryCount, 8);
+        reconnectTimerRef.current = window.setTimeout(() => { void connect().catch(() => {}); }, Math.min(12000, 1200 * Math.max(1, retryCount)));
       }
     };
 
@@ -624,25 +624,29 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     try {
       const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
       const items = Array.isArray(r.data?.items) ? r.data.items : [];
-      // Never replace a valid stage snapshot with an empty/transient response.
-      // This prevents Solo ↔ Guest/Stage flicker while Firestore catches up.
+      const serverMode = String(r.data?.displayMode || '').toUpperCase();
+      const validStageMode = ['ONE VS ONE','GUEST','PK'].includes(serverMode);
+      const hasStageMembers = items.some((m:any) => ['host','cohost','guest'].includes(String(m?.role || '').toLowerCase()));
+
+      // A viewer/guest must never fall back to Solo just because the stage
+      // endpoint briefly returns an incomplete/empty snapshot. Once a stage
+      // session is entered, keep the stage renderer locked until an explicit
+      // leave/room switch happens. This removes the Solo <-> Guest blink.
       if (items.length) setStageMembers(items);
-      // Do not kick a stage participant back to audience because one stage
-      // snapshot temporarily arrives incomplete. Only an explicit stage leave
-      // action should return them to the audience. This was a major source of
-      // SOLO <-> GUEST blinking after accepting an invite.
-      if (r.data?.displayMode) {
-        const mode = String(r.data.displayMode).toUpperCase();
-        if (['ONE VS ONE','GUEST','PK'].includes(mode)) {
-          stageModeLockedRef.current = true;
-          setLiveDisplayMode(mode);
-          setStageActive(true);
-        } else if (!stageModeLockedRef.current && !stageActive && !['cohost','guest'].includes(stageRole)) {
-          setLiveDisplayMode('SOLO');
-          setStageActive(false);
-        }
+      if (stageRole && ['cohost','guest'].includes(stageRole)) {
+        stageModeLockedRef.current = true;
+        stageSyncArmedRef.current = true;
+        setStageActive(true);
+        if (!validStageMode && !['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode)) setLiveDisplayMode(stageRole === 'guest' ? 'GUEST' : 'ONE VS ONE');
+      } else if (validStageMode || (!room.isHost && hasStageMembers)) {
+        const mode = validStageMode ? serverMode : (liveDisplayMode === 'PK' ? 'PK' : 'GUEST');
+        stageModeLockedRef.current = true;
+        stageSyncArmedRef.current = true;
+        setLiveDisplayMode(mode);
+        setStageActive(true);
       }
-      if (stageRole && ['cohost','guest'].includes(stageRole)) { stageModeLockedRef.current = true; stageSyncArmedRef.current = true; setStageActive(true); }
+      // Intentionally do NOT demote an already-active viewer/guest to SOLO
+      // from a transient SOLO response. Only explicit leave logic may do that.
       return r.data;
     } catch { return null; }
   };
@@ -843,17 +847,17 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       </div>
       {isPkMode ? <div className="pk-stage-body">
         <div className="pk-featured-side">
-          {stageHost && (() => { const mine=String(stageHost.userId)===currentUserId; const ru=!mine && remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine ? <div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`} /> : ru ? <div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/> : <div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div><button className="live-stage-x" onClick={()=>void leaveStageMember(stageHost)}>×</button></div>})()}
+          {stageHost && (() => { const mine=String(stageHost.userId)===currentUserId; const ru=!mine && remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine ? <div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`} /> : ru ? <div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/> : <div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="stage-host-badge">HOST</div><div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div><button className="live-stage-x" onClick={()=>void leaveStageMember(stageHost)}>×</button></div>})()}
         </div>
         <div className="pk-seat-grid">
           {Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`pk-empty-${i}`}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}
         </div>
       </div> : !isLargeGuestLayout && liveDisplayMode === 'ONE VS ONE' && stageParticipants.length === 2 ? <div className="one-vs-one-stage">
-        {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
+        {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<>{String(member.role||'').toLowerCase() === 'host' && <div className="stage-host-badge">HOST</div>}</><div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : !isLargeGuestLayout ? <div className={`guest-stage-grid count-${stageParticipants.length}`}>
         {orderedStageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : <div className="large-guest-stage-body">
-        <div className="large-guest-host">{stageHost&&(()=>{const mine=String(stageHost.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div></div>})()}</div>
+        <div className="large-guest-host">{stageHost&&(()=>{const mine=String(stageHost.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="stage-host-badge">HOST</div><div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div></div>})()}</div>
         <div className="live-stage-seat-grid-8">{Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`empty-${i}`} onClick={() => member && room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}</div>
       </div>}
       <div className="live-stage-bottom"><div className="live-stage-comments-hint">Comments & gifts stay here</div><button onClick={()=>void submitComment()} aria-label="Send comment"><Send/></button></div>
