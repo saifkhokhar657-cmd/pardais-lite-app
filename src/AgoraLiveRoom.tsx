@@ -64,13 +64,17 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [pkInvites, setPkInvites] = useState<any[]>([]);
   const [pkBusy, setPkBusy] = useState(false);
   const [liveDisplayMode, setLiveDisplayMode] = useState(String((room as any).displayMode || 'SOLO').toUpperCase());
+  const [stageActive, setStageActive] = useState(() => {
+    const mode = String((room as any).displayMode || '').toUpperCase();
+    return ['ONE VS ONE','GUEST','PK'].includes(mode) || ['cohost','guest'].includes(String((room as any).stageRole || '').toLowerCase());
+  });
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const remoteVideoRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const stageRole = String((room as any).stageRole || '').toLowerCase();
   const canPublish = Boolean(room.isHost || ['cohost','guest'].includes(stageRole));
   const stageParticipants = stageMembers.filter((m:any) => ['host','cohost','guest'].includes(String(m.role || '').toLowerCase()));
   const guestCount = stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'guest').length;
-  const isStageMode = (['cohost','guest'].includes(stageRole) || stageParticipants.length > 1 || ['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode));
+  const isStageMode = stageActive || ['cohost','guest'].includes(stageRole) || ['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode);
   const isLargeGuestLayout = guestCount >= 4 || stageParticipants.length >= 5;
   const isPkMode = liveDisplayMode === 'PK';
 
@@ -174,7 +178,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           const previous = seenInviteStatus.current.get(id);
           if (previous && previous !== status && (status === 'accepted' || status === 'rejected')) {
             setInviteNotice(status === 'accepted' ? 'Invite accepted — One VS One is ready.' : 'Request rejected — you remain in Solo Live.');
-            if (status === 'accepted') { setLiveDisplayMode('ONE VS ONE'); void refreshStage(); }
+            if (status === 'accepted') { setLiveDisplayMode('ONE VS ONE'); setStageActive(true); void refreshStage(); }
             window.setTimeout(() => setInviteNotice(''), 3500);
           }
           seenInviteStatus.current.set(id, status);
@@ -459,6 +463,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/host-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'cohost', displayMode: 'ONE VS ONE' });
       } else if (status === 'rejected') {
@@ -475,6 +480,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/guest-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'guest', displayMode: 'GUEST' });
       } else if (status === 'rejected') {
@@ -545,8 +551,14 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const refreshStage = async () => {
     try {
       const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
-      setStageMembers(Array.isArray(r.data?.items) ? r.data.items : []);
-      if (r.data?.displayMode) setLiveDisplayMode(String(r.data.displayMode).toUpperCase());
+      const items = Array.isArray(r.data?.items) ? r.data.items : [];
+      setStageMembers(items);
+      if (r.data?.displayMode) {
+        const mode = String(r.data.displayMode).toUpperCase();
+        setLiveDisplayMode(mode);
+        if (['ONE VS ONE','GUEST','PK'].includes(mode)) setStageActive(true);
+      }
+      if (stageRole && ['cohost','guest'].includes(stageRole)) setStageActive(true);
       return r.data;
     } catch { return null; }
   };
@@ -639,7 +651,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     if (!member || String(member.userId) !== String(auth.currentUser?.uid || '')) return;
     try {
       await api.post('/api/live/stage/leave', { roomId: room.id });
-      if (room.isHost) { setLiveDisplayMode('SOLO'); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
+      if (room.isHost) { setLiveDisplayMode('SOLO'); setStageActive(false); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
       else onClose();
     } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.')); }
   };
@@ -706,7 +718,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const localStageMember = stageParticipants.find((m:any) => String(m.userId) === currentUserId);
   const stageMemberForRemote = (u:IAgoraRTCRemoteUser) => stageByUid.get(String(u.uid));
 
-  return <div className={`solo-live reference-solo-live ${room.isHost ? 'host-live' : 'viewer-live'} ${isStageMode ? 'stage-live' : ''} ${isPkMode ? 'pk-stage-live' : ''}`} onTouchEnd={handleTouchLike} onDoubleClick={handleDoubleClickLike}>
+  return <div className={`solo-live reference-solo-live ${room.isHost ? 'host-live' : 'viewer-live'} ${isStageMode ? 'stage-live' : ''} ${isStageMode && canPublish ? 'stage-participant-live' : ''} ${isPkMode ? 'pk-stage-live' : ''}`} onTouchEnd={handleTouchLike} onDoubleClick={handleDoubleClickLike}>
     {!isStageMode && <div ref={room.isHost ? localVideoRef : remoteVideoRef} className={`solo-live-video ${filterOn ? 'filter-on' : ''} ${((room.isHost && cameraOn) || (!room.isHost && remoteCameraOn)) ? 'has-video' : ''}`} />}
     {isStageMode && <div className={`live-stage ${isLargeGuestLayout ? 'large-guest-stage' : ''} ${isPkMode ? 'pk-stage' : ''}`}>
       <div className="live-stage-header">
@@ -811,14 +823,20 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
 
     <div className="solo-bottom-actions">
       {room.isHost ? <button className="solo-invite" onClick={() => setInviteOpen(v => !v)}><UserPlus /><b>Invite</b></button> : null}
-      {room.isHost || (isStageMode && canPublish) ? <>
+      {room.isHost ? <>
         <button className={micOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleMic()} aria-label="Microphone">{micOn ? <Mic /> : <MicOff />}</button>
         <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()} aria-label="Camera">{cameraOn ? <Camera /> : <CameraOff />}</button>
         <button className="solo-round" onClick={() => void rotateCamera()} aria-label="Rotate camera">↻</button>
-        {room.isHost && <button className={filterOn ? 'solo-round active' : 'solo-round'} onClick={() => setFilterOn(v => !v)} aria-label="Filter"><Sparkles /></button>}
-        {room.isHost && <button className="solo-round" onClick={() => setMoreOpen(v => !v)} aria-label="More">⋯</button>}
+        <button className={filterOn ? 'solo-round active' : 'solo-round'} onClick={() => setFilterOn(v => !v)} aria-label="Filter"><Sparkles /></button>
+        <button className="solo-round" onClick={() => setMoreOpen(v => !v)} aria-label="More">⋯</button>
+      </> : isStageMode && canPublish ? <>
+        <button className={micOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleMic()} aria-label="Microphone">{micOn ? <Mic /> : <MicOff />}</button>
+        <button className={cameraOn ? 'solo-round' : 'solo-round danger'} onClick={() => void toggleCamera()} aria-label="Camera">{cameraOn ? <Camera /> : <CameraOff />}</button>
+        <button className="solo-viewer-gift" onClick={() => setGiftOpen(v => !v)} aria-label="Send gift"><Gift /></button>
+        <button className="solo-viewer-gift stage-share" onClick={() => void share()} aria-label="Share live"><Share2 /></button>
       </> : <>
         <button className="solo-viewer-gift" onClick={() => setGiftOpen(v => !v)} aria-label="Send gift"><Gift /></button>
+        <button className="solo-viewer-gift stage-share" onClick={() => void share()} aria-label="Share live"><Share2 /></button>
       </>}
     </div>
     <div className="solo-floating-hearts" aria-hidden="true">{floatingHearts.map(id => <Heart key={id} fill="currentColor" className="solo-floating-heart" />)}</div>
