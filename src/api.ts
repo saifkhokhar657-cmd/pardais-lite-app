@@ -47,9 +47,10 @@ async function request(path: string, init: RequestInit = {}) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const detail = String(data?.error || `${method} ${path} failed (${response.status})`);
-        const error = new Error(detail);
-        reportAppError(error);
-        throw error;
+        // Do not raise the global connection banner for ordinary API failures.
+        // Callers can handle actionable errors locally; the global tracker is
+        // reserved for uncaught/fatal failures and real offline transitions.
+        throw new Error(detail);
       }
       return { data };
     } catch (error) {
@@ -60,7 +61,6 @@ async function request(path: string, init: RequestInit = {}) {
       await new Promise(r => window.setTimeout(r, 600));
     }
   }
-  reportAppError(lastError);
   throw lastError;
 }
 

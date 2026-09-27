@@ -1367,3 +1367,15 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live.stage-live .solo-viewer-list-backdrop{z-index:89!important}
 .reference-solo-live.stage-live .solo-incoming-invite-backdrop{z-index:100!important}
 .reference-solo-live.stage-live .solo-gift-drawer-backdrop{z-index:120!important}
+
+/* Live connection recovery: quiet loader for transient signal drops. */
+.reference-solo-live .solo-reconnect-loader{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:115;display:flex;align-items:center;gap:9px;padding:10px 15px;border-radius:22px;background:rgba(8,7,14,.72);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px);color:#fff;font-size:12px;pointer-events:none;box-shadow:0 12px 35px rgba(0,0,0,.35)}
+.reference-solo-live .solo-reconnect-spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:pardais-reconnect-spin .8s linear infinite}
+@keyframes pardais-reconnect-spin{to{transform:rotate(360deg)}}
+.reference-solo-live .solo-error{z-index:120;display:flex;align-items:center;gap:8px}
+.reference-solo-live .solo-error button{border:0;border-radius:12px;padding:6px 10px;background:#d84dcc;color:#fff;font-weight:800}
+
+/* Comment names are live interaction targets in Solo mode. */
+.reference-solo-live .solo-comments{pointer-events:auto!important}
+.reference-solo-live .solo-comment-item{pointer-events:auto!important}
+.reference-solo-live .solo-comment-user{pointer-events:auto!important;position:relative;z-index:2}

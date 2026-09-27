@@ -13,6 +13,8 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const localVideoRef = useRef<HTMLDivElement | null>(null);
   const remoteVideoRef = useRef<HTMLDivElement | null>(null);
   const remoteAudioTracksRef = useRef<any[]>([]);
+  const transitioningToStageRef = useRef(false);
+  const reconnectTimerRef = useRef<number | null>(null);
   const initialStageRole = String((room as any).stageRole || '').toLowerCase();
   const canPublishInitial = Boolean(room.isHost || ['cohost','guest'].includes(initialStageRole));
   const [micOn, setMicOn] = useState(canPublishInitial);
@@ -20,6 +22,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [viewerCount, setViewerCount] = useState(0);
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [remoteCameraOn, setRemoteCameraOn] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
   const [giftBusy, setGiftBusy] = useState(false);
@@ -171,6 +174,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           const previous = seenInviteStatus.current.get(id);
           if (previous && previous !== status && (status === 'accepted' || status === 'rejected')) {
             setInviteNotice(status === 'accepted' ? 'Invite accepted — One VS One is ready.' : 'Request rejected — you remain in Solo Live.');
+            if (status === 'accepted') { setLiveDisplayMode('ONE VS ONE'); void refreshStage(); }
             window.setTimeout(() => setInviteNotice(''), 3500);
           }
           seenInviteStatus.current.set(id, status);
@@ -211,10 +215,22 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
 
   useEffect(() => {
     let disposed = false;
+    let retryCount = 0;
     const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
     clientRef.current = client;
-    const connect = async () => {
+
+    const clearReconnect = () => {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const connect = async (): Promise<void> => {
+      if (disposed) return;
       try {
+        setReconnecting(retryCount > 0);
+        setError('');
         const join = room.agora
           ? { data: { agora: room.agora, room } }
           : (canPublish && stageRole
@@ -224,14 +240,39 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         await client.setClientRole(canPublish ? 'host' : 'audience');
         await client.join(agora.appId, agora.channel, agora.token, agora.uid);
         if (disposed) return;
+        retryCount = 0;
         setConnected(true);
-        setViewerCount(client.remoteUsers.length);
+        setReconnecting(false);
+        setError('');
+
         const syncRemoteUsers = () => {
           setRemoteUsers([...client.remoteUsers]);
-          setViewerCount(client.remoteUsers.length);
+          if (!isStageMode) setViewerCount(client.remoteUsers.length);
         };
+        client.on('connection-state-change', (cur: string, prev: string, reason: string) => {
+          if (disposed) return;
+          if (cur === 'CONNECTED') {
+            setConnected(true);
+            setReconnecting(false);
+            setError('');
+            retryCount = 0;
+          } else if (cur === 'RECONNECTING' || cur === 'DISCONNECTED') {
+            setReconnecting(true);
+            setConnected(false);
+            // Agora normally recovers itself. Only show a quiet loader; don't
+            // turn a transient signal drop into an alarming app error.
+            if (cur === 'DISCONNECTED') {
+              retryCount += 1;
+              clearReconnect();
+              reconnectTimerRef.current = window.setTimeout(() => {
+                if (disposed) return;
+                void connect().catch(() => {});
+              }, Math.min(8000, 1000 * Math.max(1, retryCount)));
+            }
+          }
+        });
         client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType: 'audio'|'video') => {
-          await client.subscribe(user, mediaType);
+          try { await client.subscribe(user, mediaType); } catch { return; }
           syncRemoteUsers();
           if (mediaType === 'video') {
             setRemoteCameraOn(true);
@@ -242,44 +283,64 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
             try { user.audioTrack.play(); } catch {}
           }
         });
-        client.on('user-unpublished', (_user: IAgoraRTCRemoteUser, mediaType: 'audio'|'video') => {
+        client.on('user-unpublished', (user: IAgoraRTCRemoteUser, mediaType: 'audio'|'video') => {
           syncRemoteUsers();
           if (mediaType === 'video') setRemoteCameraOn(false);
           if (mediaType === 'audio') {
-            const track = _user.audioTrack;
+            const track = user.audioTrack;
             if (track) remoteAudioTracksRef.current = remoteAudioTracksRef.current.filter((t:any) => t !== track);
           }
         });
         client.on('user-left', (user: IAgoraRTCRemoteUser) => {
           setRemoteUsers(prev => prev.filter(x => String(x.uid) !== String(user.uid)));
-          setViewerCount(client.remoteUsers.length);
+          if (!isStageMode) setViewerCount(client.remoteUsers.length);
         });
         for (const user of client.remoteUsers) {
-          if (user.hasVideo) { await client.subscribe(user, 'video'); setRemoteCameraOn(true); }
-          if (user.hasAudio) { await client.subscribe(user, 'audio'); if (user.audioTrack) { if (!remoteAudioTracksRef.current.includes(user.audioTrack)) remoteAudioTracksRef.current.push(user.audioTrack); try { user.audioTrack.play(); } catch {} } }
+          if (user.hasVideo) { try { await client.subscribe(user, 'video'); } catch {} setRemoteCameraOn(true); }
+          if (user.hasAudio) {
+            try { await client.subscribe(user, 'audio'); } catch {}
+            if (user.audioTrack) {
+              if (!remoteAudioTracksRef.current.includes(user.audioTrack)) remoteAudioTracksRef.current.push(user.audioTrack);
+              try { user.audioTrack.play(); } catch {}
+            }
+          }
         }
         syncRemoteUsers();
         if (canPublish) {
-          micRef.current = await AgoraRTC.createMicrophoneAudioTrack();
+          if (!micRef.current) micRef.current = await AgoraRTC.createMicrophoneAudioTrack();
           const publishTracks:any[] = [micRef.current];
-          if (['cohost','guest'].includes(stageRole)) {
-            try {
-              camRef.current = await AgoraRTC.createCameraVideoTrack();
-              publishTracks.push(camRef.current);
-              setCameraOn(true);
-            } catch {}
+          if (['cohost','guest'].includes(stageRole) && !camRef.current) {
+            try { camRef.current = await AgoraRTC.createCameraVideoTrack(); setCameraOn(true); } catch {}
           }
+          if (camRef.current) publishTracks.push(camRef.current);
           await client.publish(publishTracks);
           setMicOn(true);
           if (camRef.current && localVideoRef.current) camRef.current.play(localVideoRef.current);
         }
       } catch (e: any) {
-        if (!disposed) setError(e?.message || 'Could not connect to the live stream.');
+        if (disposed) return;
+        setConnected(false);
+        setReconnecting(true);
+        retryCount += 1;
+        clearReconnect();
+        if (retryCount <= 4) {
+          reconnectTimerRef.current = window.setTimeout(() => { void connect().catch(() => {}); }, Math.min(10000, 1000 * retryCount));
+        } else {
+          setReconnecting(false);
+          setError('Live connection could not be restored. Please try again.');
+          try { window.dispatchEvent(new CustomEvent('pardais:app-error', { detail: { message: 'Live connection could not be restored. Please try again.' } })); } catch {}
+        }
       }
     };
+
     void connect();
     return () => {
       disposed = true;
+      clearReconnect();
+      if (transitioningToStageRef.current) {
+        transitioningToStageRef.current = false;
+        return;
+      }
       void (async () => {
         try { await client.leave(); } catch {}
         micRef.current?.close(); camRef.current?.close();
@@ -398,6 +459,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/host-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'cohost', displayMode: 'ONE VS ONE' });
       } else if (status === 'rejected') {
         setInviteNotice('Co-host request rejected. You remain in Solo Live.');
@@ -413,6 +475,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/guest-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'guest', displayMode: 'GUEST' });
       } else if (status === 'rejected') {
         setInviteNotice('Guest request rejected.');
@@ -469,7 +532,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
             commentUserCache.current.set(uid, cached);
           }
         }
-        mapped.push({ ...cached, id: String(item.id || `${uid}-${item.createdAt || item.text}`), text: String(item.text || ''), isHost: uid === String(room.hostId || room.host?.id || '') });
+        mapped.push({ ...cached, id: String(item.id || `${uid}-${item.createdAt || item.text}`), text: String(item.text || ''), isHost: uid === String(room.hostId || room.host?.id || ''), moderator: Boolean(item.moderator) });
       }
       setComments(mapped);
       window.requestAnimationFrame(() => {
@@ -479,17 +542,18 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     } catch {}
   };
 
+  const refreshStage = async () => {
+    try {
+      const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
+      setStageMembers(Array.isArray(r.data?.items) ? r.data.items : []);
+      if (r.data?.displayMode) setLiveDisplayMode(String(r.data.displayMode).toUpperCase());
+      return r.data;
+    } catch { return null; }
+  };
+
   useEffect(() => {
     let cancelled = false;
-    const loadStage = async () => {
-      try {
-        const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
-        if (!cancelled) {
-          setStageMembers(Array.isArray(r.data?.items) ? r.data.items : []);
-          if (r.data?.displayMode) setLiveDisplayMode(String(r.data.displayMode).toUpperCase());
-        }
-      } catch {}
-    };
+    const loadStage = async () => { if (!cancelled) await refreshStage(); };
     void loadStage();
     const timer = window.setInterval(loadStage, 5000);
     return () => { cancelled = true; window.clearInterval(timer); };
@@ -564,6 +628,8 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     setInviteBusy(String(candidate.host.id));
     try {
       await api.post('/api/live/host-invite', { roomId: room.id, toUserId: String(candidate.host.id), targetRoomId: String(candidate.roomId) });
+      setInviteNotice(`One VS One request sent to ${candidate.host?.name || 'host'}.`);
+      window.setTimeout(() => setInviteNotice(''), 3000);
       setAvailableHosts(v => v.filter(x => String(x.host?.id) !== String(candidate.host.id)));
     } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Invite could not be sent.')); }
     finally { setInviteBusy(null); }
@@ -597,6 +663,8 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     setViewerActionBusy(true);
     try {
       await api.post('/api/live/guest-invite', { roomId: room.id, toUserId: selectedViewer.userId });
+      setInviteNotice(`Guest invitation sent to ${selectedViewer.name || 'viewer'}.`);
+      window.setTimeout(() => setInviteNotice(''), 3000);
       setSelectedViewer(null);
     } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Guest invite could not be sent.')); }
     finally { setViewerActionBusy(false); }
@@ -726,7 +794,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           <div className="solo-comment-avatar">{c.avatar ? <img src={c.avatar} alt="" /> : <span>{c.name.slice(0,1).toUpperCase()}</span>}</div>
           <div className="solo-comment-copy">
             <div className="solo-comment-meta">
-              <button className="solo-comment-user" onClick={() => !c.isHost && setSelectedViewer(c)}>{c.name}</button>
+              <button className="solo-comment-user" onClick={() => { if (!c.isHost && String(c.userId || '') !== String(auth.currentUser?.uid || '')) setSelectedViewer({ ...c, userId: String(c.userId || c.id) }); }}>{c.name}</button>
               {c.isHost ? <span className="solo-comment-host">Host</span> : <span className="solo-comment-level">👑 Lv.{Math.max(1, c.level)}</span>}
             </div>
             <p>{c.text}</p>
@@ -816,7 +884,8 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       <div className="solo-incoming-invite-card"><div className="solo-incoming-invite-avatar">{pkInvites[0].fromUser?.avatar ? <img src={pkInvites[0].fromUser.avatar} alt=""/> : <span>PK</span>}</div><h3>PK Request</h3><p><b>{pkInvites[0].fromUser?.name || 'Co-host'}</b> wants to start a PK battle.</p><div className="solo-incoming-invite-actions"><button onClick={() => void respondPkInvite(pkInvites[0],'rejected')}>Reject</button><button className="pink-action" onClick={() => void respondPkInvite(pkInvites[0],'accepted')}>Accept PK</button></div></div>
     </div>}
     {canPublish && stageMembers.filter((m:any) => ['host','cohost'].includes(String(m.role||'').toLowerCase())).length >= 2 && <button className="solo-pk-button" onClick={() => void invitePk()} disabled={pkBusy}>{pkBusy ? 'Sending…' : 'PK'}</button>}
-    {error && <div className="solo-error">{error}</div>}
+    {reconnecting && <div className="solo-reconnect-loader" role="status"><span className="solo-reconnect-spinner"/><b>Reconnecting…</b></div>}
+    {error && <div className="solo-error">{error}<button onClick={() => window.location.reload()}>Retry</button></div>}
 
     {room.isHost && endConfirmOpen && <div className="solo-end-modal" role="dialog" aria-modal="true" aria-labelledby="solo-end-title">
       <div className="solo-end-card"><h3 id="solo-end-title">End Broadcast?</h3><p>Hey, do you want to end the broadcast?</p><div><button className="solo-end-no" onClick={() => setEndConfirmOpen(false)}>No</button><button className="solo-end-yes" onClick={endBroadcast}>Yes</button></div></div>
