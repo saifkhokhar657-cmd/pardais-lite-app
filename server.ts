@@ -615,8 +615,8 @@ app.post('/api/live/guest-invite/respond', asyncRoute(async(req,res)=>{
   const guests = members.filter((m:any)=>['guest','cohost'].includes(String(m.role||'').toLowerCase()));
   if (guests.length >= 8) return res.status(409).json({ error:'guest seats are full' });
   const own = members.find((m:any)=>String(m.userId)===String(req.user!.uid));
-  if (own) await update('live_members', String(own.id), { role:'guest', agoraUid:numericAgoraUid(req.user!.uid) });
-  else await add('live_members', { roomId:String(room.id), userId:req.user!.uid, role:'guest', agoraUid:numericAgoraUid(req.user!.uid) });
+  if (own) await update('live_members', String(own.id), { role:'guest', agoraUid:numericAgoraUid(req.user!.uid), cameraAllowed:false, micMuted:false });
+  else await add('live_members', { roomId:String(room.id), userId:req.user!.uid, role:'guest', agoraUid:numericAgoraUid(req.user!.uid), cameraAllowed:false, micMuted:false });
   const u:any = await get('users', req.user!.uid); const p:any = await get('profiles', req.user!.uid);
   const name = p?.name || (p?.firstName ? `${p.firstName} ${p.lastName||''}`.trim() : (u?.name || 'Pardais User'));
   await add('live_entries', { roomId:String(room.id), userId:req.user!.uid, role:'guest', name, username:p?.username||u?.username||'', avatar:p?.avatar||u?.avatar||'', level:Math.max(1,Number(p?.level??u?.level??1)) });
@@ -630,7 +630,7 @@ app.get('/api/live/stage/:roomId', asyncRoute(async(req,res)=>{
   const members:any[]=await list('live_members',{roomId},100);
   const stage=await Promise.all(members.filter((m:any)=>['host','cohost','guest'].includes(String(m.role||'').toLowerCase())).map(async(m:any)=>{
     const u:any=await get('users',String(m.userId)); const p:any=await get('profiles',String(m.userId));
-    return {userId:String(m.userId),role:String(m.role||'guest'),agoraUid:Number(m.agoraUid||numericAgoraUid(String(m.userId))),name:p?.name||(p?.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User')),username:p?.username||u?.username||'',avatar:p?.avatar||u?.avatar||'',level:Number(p?.level??u?.level??1)};
+    return {userId:String(m.userId),role:String(m.role||'guest'),agoraUid:Number(m.agoraUid||numericAgoraUid(String(m.userId))),cameraAllowed:Boolean(m.cameraAllowed || String(m.role||'').toLowerCase()==='cohost'),micMuted:Boolean(m.micMuted),name:p?.name||(p?.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User')),username:p?.username||u?.username||'',avatar:p?.avatar||u?.avatar||'',level:Number(p?.level??u?.level??1)};
   }));
   const pkRows:any[]=await list('pk_matches',{roomId},20);
   const activePk=pkRows.some((m:any)=>['active','live','started','running','in_progress'].includes(String(m.status||'').toLowerCase()));
@@ -661,6 +661,20 @@ app.post('/api/live/stage/token', asyncRoute(async(req,res)=>{
   if(!member || !['host','cohost','guest'].includes(String(member.role||'').toLowerCase())) return res.status(403).json({error:'you are not a stage participant'});
   const token=buildRtcToken(String(room.channel),req.user!.uid,'host');
   return res.json({success:true,role:member.role,channel:room.channel,...token});
+}));
+app.post('/api/live/stage/control', asyncRoute(async(req,res)=>{
+  const roomId=String(req.body?.roomId||''), targetUserId=String(req.body?.targetUserId||''), action=String(req.body?.action||'');
+  const room:any=await get('live_rooms',roomId); if(!room||room.status!=='live') return res.status(404).json({error:'live room not found'});
+  if(String(room.hostId)!==String(req.user!.uid)) return res.status(403).json({error:'only the host can control a stage participant'});
+  const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10); const member=rows.find((m:any)=>['cohost','guest'].includes(String(m.role||'').toLowerCase()));
+  if(!member) return res.status(404).json({error:'stage participant not found'});
+  if(!['grant_camera','revoke_camera','mute_mic','unmute_mic','remove_seat'].includes(action)) return res.status(400).json({error:'unsupported stage control'});
+  if(action==='remove_seat'){ await update('live_members',String(member.id),{role:'audience',cameraAllowed:false,micMuted:false}); return res.json({success:true,action,status:'removed'}); }
+  if(action==='grant_camera') await update('live_members',String(member.id),{cameraAllowed:true});
+  if(action==='revoke_camera') await update('live_members',String(member.id),{cameraAllowed:false});
+  if(action==='mute_mic') await update('live_members',String(member.id),{micMuted:true});
+  if(action==='unmute_mic') await update('live_members',String(member.id),{micMuted:false});
+  return res.json({success:true,action});
 }));
 app.post('/api/live/stage/leave', asyncRoute(async(req,res)=>{
   const roomId=String(req.body?.roomId||''); const room:any=await get('live_rooms',roomId); if(!room) return res.status(404).json({error:'room not found'});

@@ -1583,3 +1583,13 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   .reference-solo-live.stage-live .solo-bottom-actions .solo-viewer-gift { width:45px!important; height:45px!important; flex-basis:45px!important; }
   .reference-solo-live.stage-live .solo-bottom-actions .solo-invite { max-width:100px!important; height:45px!important; }
 }
+
+/* V52 stability + host stage controls */
+.reference-solo-live.stage-live .one-vs-one-panel,
+.reference-solo-live.stage-live .guest-stage-box,
+.reference-solo-live.stage-live .live-stage-seat { cursor:pointer; }
+.reference-solo-live .stage-role-badge { margin-left:auto; padding:6px 9px; border-radius:10px; background:rgba(213,61,230,.16); color:#df68ee; font-size:11px; font-weight:900; }
+.reference-solo-live.stage-live .live-stage-track,
+.reference-solo-live.stage-live .live-stage-placeholder { transition:none!important; animation:none!important; }
+.reference-solo-live.stage-live .live-stage { transition:none!important; animation:none!important; }
+.reference-solo-live.stage-live .solo-live-video { visibility:hidden!important; }

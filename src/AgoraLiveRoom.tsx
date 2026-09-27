@@ -61,18 +61,24 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   const [inviteNotice, setInviteNotice] = useState('');
   const seenInviteStatus = useRef(new Map<string,string>());
   const [stageMembers, setStageMembers] = useState<any[]>([]);
+  const [selectedStageMember, setSelectedStageMember] = useState<any | null>(null);
+  const stageModeLockedRef = useRef(false);
   const [pkInvites, setPkInvites] = useState<any[]>([]);
   const [pkBusy, setPkBusy] = useState(false);
   const [liveDisplayMode, setLiveDisplayMode] = useState(String((room as any).displayMode || 'SOLO').toUpperCase());
   const [stageActive, setStageActive] = useState(() => {
     const mode = String((room as any).displayMode || '').toUpperCase();
-    return ['ONE VS ONE','GUEST','PK'].includes(mode) || ['cohost','guest'].includes(String((room as any).stageRole || '').toLowerCase());
+    const active = ['ONE VS ONE','GUEST','PK'].includes(mode) || ['cohost','guest'].includes(String((room as any).stageRole || '').toLowerCase());
+    stageModeLockedRef.current = active;
+    return active;
   });
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const remoteVideoRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const stageRole = String((room as any).stageRole || '').toLowerCase();
   const canPublish = Boolean(room.isHost || ['cohost','guest'].includes(stageRole));
-  const stageParticipants = stageMembers.filter((m:any) => ['host','cohost','guest'].includes(String(m.role || '').toLowerCase()));
+  const stageParticipants = stageMembers
+    .filter((m:any) => ['host','cohost','guest'].includes(String(m.role || '').toLowerCase()))
+    .sort((a:any,b:any) => { const rank:any={host:0,cohost:1,guest:2}; return (rank[String(a.role||'guest').toLowerCase()]??9)-(rank[String(b.role||'guest').toLowerCase()]??9); });
   const guestCount = stageParticipants.filter((m:any) => String(m.role || '').toLowerCase() === 'guest').length;
   const isStageMode = stageActive || ['cohost','guest'].includes(stageRole) || ['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode);
   const isLargeGuestLayout = guestCount >= 4 || stageParticipants.length >= 5;
@@ -178,7 +184,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           const previous = seenInviteStatus.current.get(id);
           if (previous && previous !== status && (status === 'accepted' || status === 'rejected')) {
             setInviteNotice(status === 'accepted' ? 'Invite accepted — One VS One is ready.' : 'Request rejected — you remain in Solo Live.');
-            if (status === 'accepted') { setLiveDisplayMode('ONE VS ONE'); setStageActive(true); void refreshStage(); }
+            if (status === 'accepted') { stageModeLockedRef.current = true; setLiveDisplayMode('ONE VS ONE'); setStageActive(true); void refreshStage(); }
             window.setTimeout(() => setInviteNotice(''), 3500);
           }
           seenInviteStatus.current.set(id, status);
@@ -313,7 +319,9 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         if (canPublish) {
           if (!micRef.current) micRef.current = await AgoraRTC.createMicrophoneAudioTrack();
           const publishTracks:any[] = [micRef.current];
-          if (['cohost','guest'].includes(stageRole) && !camRef.current) {
+          const localStage = stageParticipants.find((m:any) => String(m.userId) === String(auth.currentUser?.uid || ''));
+          const guestCameraAllowed = stageRole !== 'guest' || Boolean(localStage?.cameraAllowed);
+          if (['cohost','guest'].includes(stageRole) && guestCameraAllowed && !camRef.current) {
             try { camRef.current = await AgoraRTC.createCameraVideoTrack(); setCameraOn(true); } catch {}
           }
           if (camRef.current) publishTracks.push(camRef.current);
@@ -364,6 +372,19 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     }
   }, [remoteUsers, isStageMode]);
 
+  // Host-controlled guest mic/camera permissions are applied without remounting the stage.
+  useEffect(() => {
+    if (stageRole !== 'guest') return;
+    const me = stageParticipants.find((m:any) => String(m.userId) === String(auth.currentUser?.uid || ''));
+    if (!me) return;
+    if (me.micMuted && micOn) { void micRef.current?.setEnabled(false).catch(() => {}); setMicOn(false); }
+    if (!me.micMuted && micRef.current && !micOn) { void micRef.current.setEnabled(true).catch(() => {}); setMicOn(true); }
+    if (!me.cameraAllowed && cameraOn) {
+      if (camRef.current && clientRef.current) { void clientRef.current.unpublish([camRef.current]).catch(() => {}); void camRef.current.setEnabled(false).catch(() => {}); }
+      setCameraOn(false);
+    }
+  }, [stageMembers, stageRole, micOn, cameraOn]);
+
   // Mobile browsers can block remote audio until the viewer interacts with the page.
   // Keep the Agora audio track published/playing even when the host camera is OFF.
   useEffect(() => {
@@ -389,6 +410,14 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
 
   const toggleCamera = async () => {
     if (!clientRef.current || !canPublish) return;
+    if (stageRole === 'guest') {
+      const local = stageParticipants.find((m:any) => String(m.userId) === String(auth.currentUser?.uid || ''));
+      if (!local?.cameraAllowed) {
+        setInviteNotice('The host must allow your camera first.');
+        window.setTimeout(() => setInviteNotice(''), 2200);
+        return;
+      }
+    }
     if (!camRef.current) {
       const track = await AgoraRTC.createCameraVideoTrack();
       camRef.current = track;
@@ -463,6 +492,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/host-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        stageModeLockedRef.current = true;
         setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'cohost', displayMode: 'ONE VS ONE' });
@@ -480,6 +510,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/guest-invite/respond', { inviteId: invite.id, status });
       setIncomingInvites(v => v.filter(x => String(x.id) !== String(invite.id)));
       if (status === 'accepted' && r.data?.room && r.data?.agora && onSwitchRoom) {
+        stageModeLockedRef.current = true;
         setStageActive(true);
         transitioningToStageRef.current = true;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'guest', displayMode: 'GUEST' });
@@ -548,17 +579,39 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     } catch {}
   };
 
+  const returnToAudience = async () => {
+    try {
+      const r = await api.post('/api/live/join', { roomId: room.id });
+      if (r.data?.room && r.data?.agora && onSwitchRoom) {
+        stageModeLockedRef.current = false;
+        onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, displayMode: 'SOLO', stageRole: '' });
+      }
+    } catch { onClose(); }
+  };
+
   const refreshStage = async () => {
     try {
       const r = await api.get(`/api/live/stage/${encodeURIComponent(room.id)}`);
       const items = Array.isArray(r.data?.items) ? r.data.items : [];
-      setStageMembers(items);
+      // Never replace a valid stage snapshot with an empty/transient response.
+      // This prevents Solo ↔ Guest/Stage flicker while Firestore catches up.
+      if (items.length) setStageMembers(items);
+      if (stageRole && ['cohost','guest'].includes(stageRole) && currentUserId && items.length && !items.some((m:any) => String(m.userId) === currentUserId)) {
+        await returnToAudience();
+        return r.data;
+      }
       if (r.data?.displayMode) {
         const mode = String(r.data.displayMode).toUpperCase();
-        setLiveDisplayMode(mode);
-        if (['ONE VS ONE','GUEST','PK'].includes(mode)) setStageActive(true);
+        if (['ONE VS ONE','GUEST','PK'].includes(mode)) {
+          stageModeLockedRef.current = true;
+          setLiveDisplayMode(mode);
+          setStageActive(true);
+        } else if (!stageModeLockedRef.current && !['cohost','guest'].includes(stageRole)) {
+          setLiveDisplayMode('SOLO');
+          setStageActive(false);
+        }
       }
-      if (stageRole && ['cohost','guest'].includes(stageRole)) setStageActive(true);
+      if (stageRole && ['cohost','guest'].includes(stageRole)) { stageModeLockedRef.current = true; setStageActive(true); }
       return r.data;
     } catch { return null; }
   };
@@ -651,7 +704,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     if (!member || String(member.userId) !== String(auth.currentUser?.uid || '')) return;
     try {
       await api.post('/api/live/stage/leave', { roomId: room.id });
-      if (room.isHost) { setLiveDisplayMode('SOLO'); setStageActive(false); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
+      if (room.isHost) { stageModeLockedRef.current = false; setLiveDisplayMode('SOLO'); setStageActive(false); setStageMembers(v => v.filter((m:any) => ['host'].includes(String(m.role || '').toLowerCase()))); }
       else onClose();
     } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Could not leave stage.')); }
   };
@@ -711,6 +764,29 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
   };
 
 
+  const stageMemberControl = async (action:string) => {
+    if (!selectedStageMember || !room.isHost) return;
+    try {
+      const r = await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: String(selectedStageMember.userId), action });
+      if (action === 'remove_seat') {
+        setStageMembers(v => v.filter((m:any) => String(m.userId) !== String(selectedStageMember.userId)));
+        const snapshot = await refreshStage();
+        if (snapshot?.displayMode === 'SOLO' && room.isHost) { stageModeLockedRef.current = false; setLiveDisplayMode('SOLO'); setStageActive(false); }
+        setSelectedStageMember(null);
+      } else {
+        await refreshStage();
+        setSelectedStageMember(null);
+      }
+      if (action === 'grant_camera') { setInviteNotice('Camera access granted.'); }
+      if (action === 'revoke_camera') { setInviteNotice('Camera access removed.'); }
+      if (action === 'mute_mic') { setInviteNotice('Guest microphone muted.'); }
+      if (action === 'unmute_mic') { setInviteNotice('Guest microphone enabled.'); }
+      window.setTimeout(() => setInviteNotice(''), 2200);
+      return r.data;
+    } catch (e:any) { window.alert(String(e?.response?.data?.error || e?.message || 'Stage control failed.')); }
+  };
+
+
   const stageByUid: Map<string, any> = new Map<string, any>(stageParticipants.map((m:any) => [String(m.agoraUid || ''), m] as [string, any]));
   const stageHost: any = stageParticipants.find((m:any) => String(m.role || '').toLowerCase() === 'host') || stageParticipants[0];
   const stageOthers: any[] = stageParticipants.filter((m:any) => String(m.userId) !== String(stageHost?.userId));
@@ -733,12 +809,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           {Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`pk-empty-${i}`}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}
         </div>
       </div> : !isLargeGuestLayout && liveDisplayMode === 'ONE VS ONE' && stageParticipants.length === 2 ? <div className="one-vs-one-stage">
-        {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={()=>void leaveStageMember(member)}>×</button></div>})}
+        {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : !isLargeGuestLayout ? <div className={`guest-stage-grid count-${stageParticipants.length}`}>
-        {stageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={()=>void leaveStageMember(member)}>×</button></div>})}
+        {stageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : <div className="large-guest-stage-body">
         <div className="large-guest-host">{stageHost&&(()=>{const mine=String(stageHost.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div></div>})()}</div>
-        <div className="live-stage-seat-grid-8">{Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`empty-${i}`}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}</div>
+        <div className="live-stage-seat-grid-8">{Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`empty-${i}`} onClick={() => member && room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}</div>
       </div>}
       <div className="live-stage-bottom"><div className="live-stage-comments-hint">Comments & gifts stay here</div><button onClick={()=>void submitComment()} aria-label="Send comment"><Send/></button></div>
     </div>}
@@ -861,6 +937,21 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
           <div className="solo-invite-copy"><b>{candidate.host?.name || 'Pardais Host'}</b><small>👑 Level {Math.max(1, Number(candidate.host?.level || 1))} · Solo Live</small></div>
           <button disabled={inviteBusy === String(candidate.host?.id)} onClick={() => void inviteHost(candidate)}>{inviteBusy === String(candidate.host?.id) ? '...' : 'Invite'}</button>
         </div>) : <div className="solo-invite-empty">No eligible solo hosts are live right now.</div>}
+      </div>
+    </div>}
+    {selectedStageMember && <div className="solo-viewer-action-backdrop" onClick={e => { if (e.target === e.currentTarget) setSelectedStageMember(null); }}>
+      <div className="solo-viewer-action-card stage-member-action-card">
+        <button className="solo-viewer-action-close" onClick={() => setSelectedStageMember(null)}><X /></button>
+        <div className="solo-viewer-action-head">
+          <div className="solo-viewer-action-avatar">{selectedStageMember.avatar ? <img src={selectedStageMember.avatar} alt=""/> : <span>{String(selectedStageMember.name||'G').slice(0,1).toUpperCase()}</span>}</div>
+          <div className="solo-viewer-action-head-copy"><h3>{selectedStageMember.name || 'Guest'}</h3><p>{selectedStageMember.username || '@guest'} · 👑 Lv.{Math.max(1, Number(selectedStageMember.level||1))}</p></div>
+          <span className="stage-role-badge">{String(selectedStageMember.role||'guest').toUpperCase()}</span>
+        </div>
+        <button className="sheet-row" onClick={() => { setSelectedStageMember(null); onViewProfile?.(String(selectedStageMember.userId)); }}><span className="sheet-icon"><Users /></span><span><b>Visit Profile</b><small>View full profile</small></span><span>›</span></button>
+        <button className="sheet-row moderator-row" onClick={() => void stageMemberControl(selectedStageMember.cameraAllowed ? 'revoke_camera' : 'grant_camera')}><span className="sheet-icon"><Camera /></span><span><b>{selectedStageMember.cameraAllowed ? 'Remove Camera Access' : 'Give Camera Access'}</b><small>{selectedStageMember.cameraAllowed ? 'They can no longer turn camera on' : 'Allow them to turn their camera on'}</small></span><span>›</span></button>
+        <button className="sheet-row warn-row" onClick={() => void stageMemberControl(selectedStageMember.micMuted ? 'unmute_mic' : 'mute_mic')}><span className="sheet-icon">{selectedStageMember.micMuted ? <Mic /> : <MicOff />}</span><span><b>{selectedStageMember.micMuted ? 'Unmute Mic' : 'Mute Mic'}</b><small>Host controls their microphone</small></span><span>›</span></button>
+        <button className="sheet-row kick-row" onClick={() => void stageMemberControl('remove_seat')}><span className="sheet-icon"><X /></span><span><b>Remove from Seat</b><small>Send them back to viewer</small></span><span>›</span></button>
+        <button className="sheet-cancel" onClick={() => setSelectedStageMember(null)}>Cancel</button>
       </div>
     </div>}
     {selectedViewer && <div className="solo-viewer-action-backdrop" onClick={e => { if (e.target === e.currentTarget) setSelectedViewer(null); }}>
