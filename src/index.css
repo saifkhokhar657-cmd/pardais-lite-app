@@ -1395,12 +1395,12 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-comment-user{pointer-events:auto!important;position:relative;z-index:2}
 
 /* V51 — FINAL STAGE UI GEOMETRY
-   The approved reference keeps the actual video/stage in the upper ~60%.
-   The lower ~40% is always reserved for comments, gift/share and controls.
+   The approved reference keeps the actual video/stage in the upper ~50%.
+   The lower ~50% is always reserved for comments, gift/share and controls.
    Solo mode is intentionally excluded from every rule below. */
 .reference-solo-live.stage-live {
   --stage-top: 72px;
-  --stage-bottom-zone: 40%;
+  --stage-bottom-zone: 50%;
   background:#050507!important;
   overflow:hidden!important;
 }
@@ -1483,7 +1483,7 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
   font-size:20px!important;
 }
 .reference-solo-live.pk-stage-live .live-stage {
-  bottom:40%!important;
+  bottom:50%!important;
 }
 .reference-solo-live.pk-stage-live .pk-stage-body {
   inset:var(--stage-top) 0 0!important;
@@ -1506,7 +1506,7 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live.stage-live .solo-comments {
   left:14px!important;
   right:14px!important;
-  top:60%!important;
+  top:50%!important;
   bottom:118px!important;
   width:auto!important;
   max-height:none!important;
