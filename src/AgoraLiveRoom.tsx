@@ -135,7 +135,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       }
     };
     void poll();
-    const timer = window.setInterval(() => void poll(), 5000);
+    const timer = window.setInterval(() => void poll(), 2000);
     return () => window.clearInterval(timer);
   }, [room.id, room.isHost]);
 
@@ -184,12 +184,12 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
 
 
   useEffect(() => {
-    if (!room.isHost) return;
+    if (!connected) return;
     const beat = () => { void api.post('/api/live/heartbeat', { roomId: room.id }).catch(() => {}); };
     beat();
-    const timer = window.setInterval(beat, 5000);
+    const timer = window.setInterval(beat, 3000);
     return () => window.clearInterval(timer);
-  }, [room.id, room.isHost]);
+  }, [room.id, room.isHost, connected]);
 
   useEffect(() => {
     if (!room.isHost) return;
@@ -258,7 +258,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     };
 
     const connect = async (): Promise<void> => {
-      if (disposed) return;
+      if (disposed || client.connectionState === 'CONNECTING' || client.connectionState === 'CONNECTED' || client.connectionState === 'RECONNECTING') return;
       try {
         setReconnecting(retryCount > 0);
         setError('');
@@ -508,6 +508,21 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     setViewerListOpen(next);
     if (next) await loadViewerList();
   };
+  const prepareRoomSwitch = async () => {
+    // A viewer accepting a guest/co-host invite must leave the old audience
+    // Agora client before the new stage client joins the same channel/UID.
+    // Keeping both clients alive causes the stage-side client to sit in
+    // RECONNECTING because Agora sees the previous connection as active.
+    transitioningToStageRef.current = true;
+    try { await clientRef.current?.leave(); } catch {}
+    try { micRef.current?.close(); } catch {}
+    try { camRef.current?.close(); } catch {}
+    micRef.current = null;
+    camRef.current = null;
+    setConnected(false);
+    setReconnecting(false);
+  };
+
   const respondHostInvite = async (invite:any, status:'accepted'|'rejected') => {
     try {
       const r = await api.post('/api/live/host-invite/respond', { inviteId: invite.id, status });
@@ -516,7 +531,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         stageModeLockedRef.current = true;
         stageSyncArmedRef.current = true;
         setStageActive(true);
-        transitioningToStageRef.current = true;
+        await prepareRoomSwitch();
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'cohost', displayMode: 'ONE VS ONE' });
       } else if (status === 'rejected') {
         setInviteNotice('Co-host request rejected. You remain in Solo Live.');
@@ -535,7 +550,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         stageModeLockedRef.current = true;
         stageSyncArmedRef.current = true;
         setStageActive(true);
-        transitioningToStageRef.current = true;
+        await prepareRoomSwitch();
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, stageRole: 'guest', displayMode: 'GUEST' });
       } else if (status === 'rejected') {
         setInviteNotice('Guest request rejected.');
@@ -607,6 +622,10 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
     try {
       const r = await api.post('/api/live/join', { roomId: room.id });
       if (r.data?.room && r.data?.agora && onSwitchRoom) {
+        try { await clientRef.current?.leave(); } catch {}
+        try { micRef.current?.close(); } catch {}
+        try { camRef.current?.close(); } catch {}
+        transitioningToStageRef.current = true;
         stageModeLockedRef.current = false;
         onSwitchRoom({ ...r.data.room, agora: r.data.agora, isHost: false, displayMode: 'SOLO', stageRole: '' });
       }
@@ -626,7 +645,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const items = Array.isArray(r.data?.items) ? r.data.items : [];
       const serverMode = String(r.data?.displayMode || '').toUpperCase();
       const validStageMode = ['ONE VS ONE','GUEST','PK'].includes(serverMode);
-      const hasStageMembers = items.some((m:any) => ['host','cohost','guest'].includes(String(m?.role || '').toLowerCase()));
+      const hasNonHostStageMembers = items.some((m:any) => ['cohost','guest'].includes(String(m?.role || '').toLowerCase()));
 
       // A viewer/guest must never fall back to Solo just because the stage
       // endpoint briefly returns an incomplete/empty snapshot. Once a stage
@@ -638,7 +657,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         stageSyncArmedRef.current = true;
         setStageActive(true);
         if (!validStageMode && !['ONE VS ONE','GUEST','PK'].includes(liveDisplayMode)) setLiveDisplayMode(stageRole === 'guest' ? 'GUEST' : 'ONE VS ONE');
-      } else if (validStageMode || (!room.isHost && hasStageMembers)) {
+      } else if (validStageMode && hasNonHostStageMembers) {
         const mode = validStageMode ? serverMode : (liveDisplayMode === 'PK' ? 'PK' : 'GUEST');
         stageModeLockedRef.current = true;
         stageSyncArmedRef.current = true;
@@ -855,7 +874,7 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       </div> : !isLargeGuestLayout && liveDisplayMode === 'ONE VS ONE' && stageParticipants.length === 2 ? <div className="one-vs-one-stage">
         {stageParticipants.map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="one-vs-one-panel" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<>{String(member.role||'').toLowerCase() === 'host' && <div className="stage-host-badge">HOST</div>}</><div className="live-stage-name">{member.name||'Host'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : !isLargeGuestLayout ? <div className={`guest-stage-grid count-${stageParticipants.length}`}>
-        {orderedStageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
+        {orderedStageParticipants.slice(0,5).map((member:any)=>{const mine=String(member.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className="guest-stage-box" key={String(member.userId)} onClick={() => room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'P').slice(0,1).toUpperCase()}</span>}</div>}{String(member.role||'').toLowerCase()==='host' && <div className="stage-host-badge">HOST</div>}<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div><button className="live-stage-x" onClick={(e)=>{e.stopPropagation();void leaveStageMember(member)}}>×</button></div>})}
       </div> : <div className="large-guest-stage-body">
         <div className="large-guest-host">{stageHost&&(()=>{const mine=String(stageHost.userId)===currentUserId; const ru=!mine&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(stageHost.userId)); return <div className="stage-person-card">{mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{stageHost.avatar?<img src={stageHost.avatar} alt=""/>:<span>{String(stageHost.name||'H').slice(0,1).toUpperCase()}</span>}</div>}<div className="stage-host-badge">HOST</div><div className="live-stage-name">{stageHost.name||'Host'} <span>Lv.{Math.max(1,Number(stageHost.level||1))}</span></div></div>})()}</div>
         <div className="live-stage-seat-grid-8">{Array.from({length:8}).map((_,i)=>{const member=stageOthers[i]; const mine=member&&String(member.userId)===currentUserId; const ru=member&&remoteUsers.find(u=>String(stageMemberForRemote(u)?.userId)===String(member.userId)); return <div className={`live-stage-seat ${member?'filled':''}`} key={member?String(member.userId):`empty-${i}`} onClick={() => member && room.isHost && String(member.userId)!==String(currentUserId) && setSelectedStageMember(member)}>{member?(mine?<div ref={localVideoRef} className={`live-stage-track ${cameraOn?'has-video':''}`}/>:ru?<div ref={el=>{remoteVideoRefs.current[String(ru.uid)]=el}} className="live-stage-track"/>:<div className="live-stage-placeholder">{member.avatar?<img src={member.avatar} alt=""/>:<span>{String(member.name||'G').slice(0,1).toUpperCase()}</span>}</div>):<span className="stage-plus">+</span>}{member&&<div className="live-stage-name">{member.name||'Guest'} <span>Lv.{Math.max(1,Number(member.level||1))}</span></div>}</div>})}</div>

@@ -303,7 +303,7 @@ app.get('/api/live/rooms', asyncRoute(async (_req, res) => {
   for (const room of rooms) {
     if (room?.endedAt) continue;
     const stamp = Date.parse(String(room.updatedAt || room.createdAt || ''));
-    if (!Number.isFinite(stamp) || nowMs - stamp > 8000) continue;
+    if (!Number.isFinite(stamp) || nowMs - stamp > 15000) continue;
     const hostKey = String(room.hostId || room.id);
     const previous = latestByHost.get(hostKey);
     const previousStamp = previous ? Date.parse(String(previous.updatedAt || previous.createdAt || '')) : -1;
@@ -329,8 +329,14 @@ app.post('/api/live/heartbeat', asyncRoute(async (req, res) => {
   const roomId = String(req.body?.roomId || '');
   const room: any = await get('live_rooms', roomId);
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
-  assertSelf(req, String(room.hostId));
-  await update('live_rooms', roomId, { updatedAt: now() });
+  const uid = String(req.user!.uid);
+  if (String(room.hostId) === uid) {
+    await update('live_rooms', roomId, { updatedAt: now() });
+  } else {
+    const rows:any[] = await list('live_members', { roomId, userId: uid }, 10);
+    if (!rows.length) return res.status(404).json({ error: 'live membership not found' });
+    for (const row of rows) await update('live_members', String(row.id), { lastSeenAt: now() });
+  }
   return res.json({ success: true, status: 'live' });
 }));
 app.get('/api/live/available-hosts', asyncRoute(async (req, res) => {
@@ -343,7 +349,7 @@ app.get('/api/live/available-hosts', asyncRoute(async (req, res) => {
     const hostKey = String(room.hostId || '');
     if (!hostKey || hostKey === String(me) || seenHosts.has(hostKey)) continue;
     const stamp = Date.parse(String(room.updatedAt || room.createdAt || ''));
-    if (!Number.isFinite(stamp) || nowMs - stamp > 8000 || room.endedAt) continue;
+    if (!Number.isFinite(stamp) || nowMs - stamp > 15000 || room.endedAt) continue;
     const members: any[] = await list('live_members', { roomId: String(room.id) }, 100);
     const occupied = members.some(m => ['guest','cohost','pk'].includes(String(m.role || '').toLowerCase()));
     const pkRows: any[] = await list('pk_matches', { hostId: hostKey }, 50);
@@ -371,7 +377,8 @@ app.get('/api/live/viewers/:roomId', asyncRoute(async (req, res) => {
   const room: any = await get('live_rooms', roomId);
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
   const rows: any[] = await list('live_members', { roomId }, 200);
-  const viewers = await Promise.all(rows.filter(m => String(m.role || 'audience') === 'audience' && String(m.userId) !== String(room.hostId)).map(async m => {
+  const cutoff = Date.now() - 10000;
+  const viewers = await Promise.all(rows.filter(m => String(m.role || 'audience') === 'audience' && String(m.userId) !== String(room.hostId) && (!m.lastSeenAt || Date.parse(String(m.lastSeenAt)) >= cutoff)).map(async m => {
     const u: any = await get('users', String(m.userId));
     const p: any = await get('profiles', String(m.userId));
     const mods:any[] = await list('live_moderators',{roomId,userId:String(m.userId)},2);
@@ -405,7 +412,8 @@ app.post('/api/live/join', asyncRoute(async (req, res) => {
   const privateAccount = Boolean(settings?.privateAccount);
   const existing = (await list('live_members', { roomId, userId }, 10))[0];
   const permanentModerator = (await list('live_moderators',{roomId,userId,status:'active'},2)).length > 0;
-  const membership = existing || { id: await add('live_members', { roomId, userId, role: 'audience', moderator: permanentModerator, anonymous: privateAccount, displayName: privateAccount ? null : (req.body?.displayName || req.user!.name || null), agoraUid: numericAgoraUid(userId) }) };
+  const membership = existing || { id: await add('live_members', { roomId, userId, role: 'audience', moderator: permanentModerator, anonymous: privateAccount, displayName: privateAccount ? null : (req.body?.displayName || req.user!.name || null), agoraUid: numericAgoraUid(userId), lastSeenAt: now() }) };
+  if (existing) await update('live_members', String(existing.id), { lastSeenAt: now() });
   if(existing && permanentModerator && !existing.moderator) await update('live_members',String(existing.id),{moderator:true});
   if (!existing) {
     const roomRef = db.collection('live_rooms').doc(roomId);
@@ -426,13 +434,15 @@ app.get('/api/live/state/:roomId', asyncRoute(async (req, res) => {
   const room: any = await get('live_rooms', String(req.params.roomId));
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
   const members: any[] = await list('live_members', { roomId: String(room.id) }, 100);
+  const cutoff = Date.now() - 10000;
+  const activeAudience = members.filter((m:any) => String(m.role || '').toLowerCase() === 'audience' && (!m.lastSeenAt || Date.parse(String(m.lastSeenAt)) >= cutoff));
   const acceptedInvites: any[] = await list('invites', { roomId: String(room.id), status: 'accepted' }, 100);
   const pkRows: any[] = await list('pk_matches', { hostId: String(room.hostId) }, 50);
   const activePk = pkRows.some((m:any) => ['active','live','started','running','in_progress'].includes(String(m.status || '').toLowerCase()));
   const hasGuest = members.some((m:any) => String(m.role || '').toLowerCase() === 'guest') || acceptedInvites.some((i:any) => String(i.type || '').toLowerCase() === 'guest');
   const hasCohost = members.some((m:any) => String(m.role || '').toLowerCase() === 'cohost') || acceptedInvites.some((i:any) => String(i.type || '').toLowerCase() === 'cohost');
   const displayMode = activePk ? 'PK' : hasGuest ? 'GUEST' : hasCohost ? 'ONE VS ONE' : 'SOLO';
-  return res.json({ success: true, hearts: Number(room.hearts || 0), viewerCount: members.length, status: room.status, displayMode });
+  return res.json({ success: true, hearts: Number(room.hearts || 0), viewerCount: activeAudience.length, status: room.status, displayMode });
 }));
 app.post('/api/live/token', asyncRoute(async (req, res) => {
   const roomId = String(req.body?.roomId || ''); const room: any = await get('live_rooms', roomId);

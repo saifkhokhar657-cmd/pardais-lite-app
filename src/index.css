@@ -1745,3 +1745,52 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 
 /* Viewer connection failures are recovered automatically; do not cover the stage with a red error card. */
 .reference-solo-live.viewer-live .solo-error { display:none !important; }
+
+
+/* V58 — compact live header/stats. Keep room for ranking and future controls. */
+.reference-solo-live .solo-stats {
+  gap: 3px !important;
+}
+.reference-solo-live .solo-stats > span,
+.reference-solo-live .solo-stats > .solo-viewer-stat {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 6px !important;
+  border-radius: 8px !important;
+  gap: 3px !important;
+}
+.reference-solo-live .solo-stats svg { width: 12px !important; height: 12px !important; }
+.reference-solo-live .solo-stats b { font-size: 10px !important; }
+.reference-solo-live .solo-stats small { font-size: 6.5px !important; }
+.reference-solo-live.stage-live .solo-stats {
+  top: 68px !important;
+  left: 7px !important;
+  right: 7px !important;
+  height: 30px !important;
+  z-index: 75 !important;
+}
+.reference-solo-live.stage-live .solo-stats > span,
+.reference-solo-live.stage-live .solo-stats > .solo-viewer-stat {
+  height: 30px !important;
+  min-height: 30px !important;
+  border-radius: 7px !important;
+  padding: 0 3px !important;
+}
+.reference-solo-live.stage-live .solo-stats svg { width: 10px !important; height: 10px !important; }
+.reference-solo-live.stage-live .solo-stats b { font-size: 9px !important; }
+.reference-solo-live.stage-live .solo-stats small { font-size: 6px !important; }
+.reference-solo-live.stage-live .stage-host-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 30px !important;
+  height: 17px !important;
+  padding: 0 6px !important;
+  top: 6px !important;
+  left: 6px !important;
+  border-radius: 6px !important;
+  font-size: 7px !important;
+  font-weight: 900 !important;
+  z-index: 999 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35) !important;
+}
