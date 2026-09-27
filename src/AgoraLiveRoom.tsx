@@ -108,7 +108,24 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
         const r = await api.get(`/api/live/state/${room.id}`);
         if (Number.isFinite(Number(r.data?.hearts))) setLikes(Number(r.data.hearts));
         if (Number.isFinite(Number(r.data?.viewerCount))) setViewerCount(Number(r.data.viewerCount));
-        if (r.data?.displayMode) setLiveDisplayMode(String(r.data.displayMode).toUpperCase());
+        // IMPORTANT: once a stage is active, never let the generic live-state
+        // endpoint push the UI back to SOLO while Firestore/Agora is catching up.
+        // The live-state endpoint can legitimately lag behind the stage transition.
+        const stateMode = String(r.data?.displayMode || '').toUpperCase();
+        const validStageMode = ['ONE VS ONE','GUEST','PK'].includes(stateMode);
+        const stageLocked = stageModeLockedRef.current || stageActive || ['cohost','guest'].includes(stageRole);
+        // Valid stage modes are always allowed to advance the stage (e.g.
+        // ONE VS ONE -> PK), but SOLO is never allowed to collapse an active
+        // stage. SOLO is only selected when no stage has ever been activated
+        // for this room/session.
+        if (validStageMode) {
+          stageModeLockedRef.current = true;
+          setLiveDisplayMode(stateMode);
+          setStageActive(true);
+        } else if (!stageLocked && stateMode === 'SOLO') {
+          setLiveDisplayMode('SOLO');
+          setStageActive(false);
+        }
       } catch (e: any) {
         if (!room.isHost && (e?.response?.status === 404 || String(e?.message || '').includes('404'))) setBroadcastEnded(true);
       }
@@ -596,17 +613,17 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       // Never replace a valid stage snapshot with an empty/transient response.
       // This prevents Solo ↔ Guest/Stage flicker while Firestore catches up.
       if (items.length) setStageMembers(items);
-      if (stageRole && ['cohost','guest'].includes(stageRole) && currentUserId && items.length && !items.some((m:any) => String(m.userId) === currentUserId)) {
-        await returnToAudience();
-        return r.data;
-      }
+      // Do not kick a stage participant back to audience because one stage
+      // snapshot temporarily arrives incomplete. Only an explicit stage leave
+      // action should return them to the audience. This was a major source of
+      // SOLO <-> GUEST blinking after accepting an invite.
       if (r.data?.displayMode) {
         const mode = String(r.data.displayMode).toUpperCase();
         if (['ONE VS ONE','GUEST','PK'].includes(mode)) {
           stageModeLockedRef.current = true;
           setLiveDisplayMode(mode);
           setStageActive(true);
-        } else if (!stageModeLockedRef.current && !['cohost','guest'].includes(stageRole)) {
+        } else if (!stageModeLockedRef.current && !stageActive && !['cohost','guest'].includes(stageRole)) {
           setLiveDisplayMode('SOLO');
           setStageActive(false);
         }
@@ -770,8 +787,10 @@ export function AgoraLiveRoom({ room, onClose, onViewProfile, onSwitchRoom }: { 
       const r = await api.post('/api/live/stage/control', { roomId: room.id, targetUserId: String(selectedStageMember.userId), action });
       if (action === 'remove_seat') {
         setStageMembers(v => v.filter((m:any) => String(m.userId) !== String(selectedStageMember.userId)));
-        const snapshot = await refreshStage();
-        if (snapshot?.displayMode === 'SOLO' && room.isHost) { stageModeLockedRef.current = false; setLiveDisplayMode('SOLO'); setStageActive(false); }
+        await refreshStage();
+        // Removing the last guest/seat does not itself prove that the backend
+        // has finished its stage transaction. Keep the current stage until an
+        // explicit host stage-leave action changes it.
         setSelectedStageMember(null);
       } else {
         await refreshStage();
