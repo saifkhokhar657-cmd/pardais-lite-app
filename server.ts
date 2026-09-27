@@ -360,6 +360,12 @@ app.get('/api/live/available-hosts', asyncRoute(async (req, res) => {
   }
   return res.json({ success: true, items: candidates });
 }));
+app.get('/api/live/permissions/:roomId', asyncRoute(async (req,res)=>{
+  const roomId=String(req.params.roomId||''); const room:any=await get('live_rooms',roomId);
+  if(!room || room.status!=='live') return res.status(404).json({error:'live room not found'});
+  const uid=String(req.user!.uid); const members:any[]=await list('live_members',{roomId,userId:uid},10);
+  return res.json({success:true,isHost:String(room.hostId)===uid,isModerator:Boolean(members[0]?.moderator)});
+}));
 app.get('/api/live/viewers/:roomId', asyncRoute(async (req, res) => {
   const roomId = String(req.params.roomId);
   const room: any = await get('live_rooms', roomId);
@@ -368,7 +374,8 @@ app.get('/api/live/viewers/:roomId', asyncRoute(async (req, res) => {
   const viewers = await Promise.all(rows.filter(m => String(m.role || 'audience') === 'audience' && String(m.userId) !== String(room.hostId)).map(async m => {
     const u: any = await get('users', String(m.userId));
     const p: any = await get('profiles', String(m.userId));
-    return { id: String(m.userId), name: p?.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : (u?.name || 'Pardais User'), username: p?.username || u?.username || '', avatar: p?.avatar || u?.avatar || '', level: Number(u?.level || p?.level || 1), role: 'audience' };
+    const mods:any[] = await list('live_moderators',{roomId,userId:String(m.userId)},2);
+    return { id: String(m.userId), userId:String(m.userId), name: p?.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : (u?.name || 'Pardais User'), username: p?.username || u?.username || '', avatar: p?.avatar || u?.avatar || '', level: Number(u?.level || p?.level || 1), role: 'audience', moderator: Boolean(m.moderator || mods.some((x:any)=>String(x.status||'active')==='active')) };
   }));
   return res.json({ success: true, items: viewers });
 }));
@@ -392,10 +399,14 @@ app.post('/api/live/join', asyncRoute(async (req, res) => {
   const room: any = await get('live_rooms', roomId);
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
   const userId = req.user!.uid;
+  const blocked:any[] = await list('blocks',{blockerId:String(room.hostId),blockedUserId:String(userId)},2);
+  if(blocked.length) return res.status(403).json({error:'you are blocked from this host live'});
   const settings: any = await get('user_settings', userId);
   const privateAccount = Boolean(settings?.privateAccount);
   const existing = (await list('live_members', { roomId, userId }, 10))[0];
-  const membership = existing || { id: await add('live_members', { roomId, userId, role: 'audience', anonymous: privateAccount, displayName: privateAccount ? null : (req.body?.displayName || req.user!.name || null), agoraUid: numericAgoraUid(userId) }) };
+  const permanentModerator = (await list('live_moderators',{roomId,userId,status:'active'},2)).length > 0;
+  const membership = existing || { id: await add('live_members', { roomId, userId, role: 'audience', moderator: permanentModerator, anonymous: privateAccount, displayName: privateAccount ? null : (req.body?.displayName || req.user!.name || null), agoraUid: numericAgoraUid(userId) }) };
+  if(existing && permanentModerator && !existing.moderator) await update('live_members',String(existing.id),{moderator:true});
   if (!existing) {
     const roomRef = db.collection('live_rooms').doc(roomId);
     await db.runTransaction(async (tx: Transaction) => { const snap = await tx.get(roomRef); if (snap.exists) tx.update(roomRef, { viewerCount: Number(snap.data()?.viewerCount || 0) + 1, updatedAt: now() }); });
@@ -468,21 +479,33 @@ app.post('/api/comments', asyncRoute(async(req,res)=>{const text=String(req.body
 app.get('/api/comments/:targetId', asyncRoute(async(req,res)=>res.json({success:true,items:await list('comments',{targetId:String(req.params.targetId)},100)})));
 app.post('/api/moderation', asyncRoute(async(req,res)=>{
   const action=String(req.body?.action||'');
-  if(!['moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});
+  if(!['moderator','remove_moderator','warn','report','kick','block'].includes(action))return res.status(400).json({error:'unsupported moderation action'});
   const targetUserId=String(req.body?.targetUserId||''); const roomId=String(req.body?.roomId||'');
-  const id=await add('moderation_actions',{...req.body,actorId:req.user!.uid,targetUserId,action,status:action==='report'?'pending':'completed'});
-  if(action==='block')await add('blocks',{blockerId:req.user!.uid,blockedUserId:targetUserId});
-  if(action==='moderator' && roomId){
-    const room:any=await get('live_rooms',roomId);
-    if(room && String(room.hostId)===String(req.user!.uid)){ const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10); for(const row of rows) await update('live_members',String(row.id),{moderator:true}); }
+  if(!targetUserId || !roomId) return res.status(400).json({error:'targetUserId and roomId are required'});
+  const room:any=await get('live_rooms',roomId); if(!room || room.status!=='live') return res.status(404).json({error:'live room not found'});
+  const actorId=String(req.user!.uid);
+  const actorMembers:any[]=await list('live_members',{roomId,userId:actorId},10);
+  const actorMember=actorMembers[0];
+  const isHost=String(room.hostId)===actorId;
+  const isModerator=Boolean(actorMember?.moderator);
+  if(action==='moderator' || action==='remove_moderator') { if(!isHost) return res.status(403).json({error:'only the host can manage moderators'}); }
+  else if(!isHost && !isModerator) return res.status(403).json({error:'only the host or a moderator can perform this action'});
+  if(String(targetUserId)===String(room.hostId)) return res.status(400).json({error:'host cannot be assigned or moderated'});
+  const id=await add('moderation_actions',{...req.body,actorId,targetUserId,action,status:action==='report'?'pending':'completed'});
+  if(action==='moderator'){
+    await add('live_moderators',{roomId,userId:targetUserId,assignedBy:actorId,status:'active'});
+    const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10);
+    for(const row of rows) await update('live_members',String(row.id),{moderator:true});
   }
-  if(action==='kick' && roomId){
-    const room:any=await get('live_rooms',roomId);
-    if(room && String(room.hostId)===String(req.user!.uid)){
-      const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10);
-      for(const row of rows) await remove('live_members',String(row.id));
-      if(rows.length){ const ref=db.collection('live_rooms').doc(roomId); await db.runTransaction(async(tx:Transaction)=>{const snap=await tx.get(ref);if(snap.exists)tx.update(ref,{viewerCount:Math.max(0,Number(snap.data()?.viewerCount||0)-rows.length),updatedAt:now()});}); }
-    }
+  if(action==='remove_moderator'){
+    const rows:any[]=await list('live_moderators',{roomId,userId:targetUserId},10); for(const row of rows) await remove('live_moderators',String(row.id));
+    const members:any[]=await list('live_members',{roomId,userId:targetUserId},10); for(const row of members) await update('live_members',String(row.id),{moderator:false});
+  }
+  if(action==='block') await add('blocks',{blockerId:actorId,blockedUserId:targetUserId,roomId});
+  if((action==='kick' || action==='block') && roomId){
+    const rows:any[]=await list('live_members',{roomId,userId:targetUserId},10);
+    for(const row of rows) await remove('live_members',String(row.id));
+    if(rows.length){ const ref=db.collection('live_rooms').doc(roomId); await db.runTransaction(async(tx:Transaction)=>{const snap=await tx.get(ref);if(snap.exists)tx.update(ref,{viewerCount:Math.max(0,Number(snap.data()?.viewerCount||0)-rows.length),updatedAt:now()});}); }
   }
   return res.status(201).json({success:true,actionId:id,action});
 }));
@@ -565,7 +588,11 @@ app.post('/api/live/guest-invite', asyncRoute(async(req,res)=>{
   const toUserId = String(req.body?.toUserId || '');
   const room: any = await get('live_rooms', roomId);
   if (!room || room.status !== 'live') return res.status(404).json({ error: 'live room not found' });
-  assertSelf(req, String(room.hostId));
+  const actorMembers:any[]=await list('live_members',{roomId,userId:req.user!.uid},10);
+  const actorIsHost=String(room.hostId)===String(req.user!.uid);
+  const actorIsModerator=Boolean(actorMembers[0]?.moderator);
+  if(!actorIsHost && !actorIsModerator) return res.status(403).json({error:'only the host or a moderator can invite guests'});
+  if(String(toUserId)===String(room.hostId)) return res.status(400).json({error:'host cannot be invited as a guest'});
   const rows: any[] = await list('live_members', { roomId, userId: toUserId }, 5);
   if (!rows.length) return res.status(400).json({ error: 'viewer is no longer in this live' });
   const duplicate = (await list('invites', { roomId, toUserId, status: 'pending', type: 'guest' }, 5))[0];
@@ -605,7 +632,11 @@ app.get('/api/live/stage/:roomId', asyncRoute(async(req,res)=>{
     const u:any=await get('users',String(m.userId)); const p:any=await get('profiles',String(m.userId));
     return {userId:String(m.userId),role:String(m.role||'guest'),agoraUid:Number(m.agoraUid||numericAgoraUid(String(m.userId))),name:p?.name||(p?.firstName?`${p.firstName} ${p.lastName||''}`.trim():(u?.name||'Pardais User')),username:p?.username||u?.username||'',avatar:p?.avatar||u?.avatar||'',level:Number(p?.level??u?.level??1)};
   }));
-  return res.json({success:true,roomId,items:stage});
+  const pkRows:any[]=await list('pk_matches',{roomId},20);
+  const activePk=pkRows.some((m:any)=>['active','live','started','running','in_progress'].includes(String(m.status||'').toLowerCase()));
+  const guestCount=stage.filter((m:any)=>String(m.role||'').toLowerCase()==='guest').length;
+  const displayMode=activePk?'PK':guestCount?'GUEST':stage.some((m:any)=>String(m.role||'').toLowerCase()==='cohost')?'ONE VS ONE':'SOLO';
+  return res.json({success:true,roomId,items:stage,displayMode,activePk});
 }));
 app.post('/api/live/pk-invite', asyncRoute(async(req,res)=>{
   const roomId=String(req.body?.roomId||''), toUserId=String(req.body?.toUserId||''); const room:any=await get('live_rooms',roomId); if(!room||room.status!=='live') return res.status(404).json({error:'live room not found'});
@@ -633,7 +664,11 @@ app.post('/api/live/stage/token', asyncRoute(async(req,res)=>{
 }));
 app.post('/api/live/stage/leave', asyncRoute(async(req,res)=>{
   const roomId=String(req.body?.roomId||''); const room:any=await get('live_rooms',roomId); if(!room) return res.status(404).json({error:'room not found'});
-  if(String(room.hostId)===String(req.user!.uid)) return res.status(400).json({error:'host must end the broadcast'});
+  if(String(room.hostId)===String(req.user!.uid)){
+    const stageRows:any[]=await list('live_members',{roomId},100);
+    for(const row of stageRows.filter((m:any)=>['cohost','guest'].includes(String(m.role||'').toLowerCase()))) await update('live_members',String(row.id),{role:'audience'});
+    return res.json({success:true,status:'stage-reset'});
+  }
   const rows:any[]=await list('live_members',{roomId,userId:req.user!.uid},10); for(const row of rows) await update('live_members',String(row.id),{role:'audience'});
   return res.json({success:true,status:'left-stage'});
 }));

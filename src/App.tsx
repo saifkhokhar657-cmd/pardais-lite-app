@@ -357,7 +357,7 @@ function LiveScreen({ room, setRoom, liveMode, setLiveMode, nav, onGoLiveSetup, 
       } catch {}
     };
     void loadRooms();
-    const timer = window.setInterval(() => void loadRooms(), 1000);
+    const timer = window.setInterval(() => void loadRooms(), 5000);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [activeLiveRoom]);
   if (activeLiveRoom) return <AgoraLiveRoom room={activeLiveRoom} onClose={onCloseRoom} onSwitchRoom={(next:any)=>onOpenRoom(next)} onViewProfile={onViewProfile} />;

@@ -1271,3 +1271,99 @@ html,body,#root{min-height:100%;margin:0;padding:0;background:#030019;}body{over
 .reference-solo-live .solo-incoming-invite-card{text-align:center;align-self:center;max-width:360px}.reference-solo-live .solo-incoming-invite-avatar{width:64px;height:64px;border-radius:50%;overflow:hidden;display:grid;place-items:center;margin:0 auto 10px;background:#2a2038;font-weight:900;font-size:20px}.reference-solo-live .solo-incoming-invite-avatar img{width:100%;height:100%;object-fit:cover}.reference-solo-live .solo-incoming-invite-card h3{margin:4px 0 7px;font-size:19px}.reference-solo-live .solo-incoming-invite-card p{margin:0;color:rgba(255,255,255,.68);font-size:12px;line-height:1.5}.reference-solo-live .solo-incoming-invite-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:16px}.reference-solo-live .solo-incoming-invite-actions button{height:44px;border:0;border-radius:13px;background:rgba(255,255,255,.09);color:#fff;font-weight:800}.reference-solo-live .solo-incoming-invite-actions .pink-action{background:#d84dcc!important;color:#fff}
 .reference-solo-live .solo-viewer-action-card{max-height:78vh;overflow:auto}
 .reference-solo-live .solo-pk-button{position:absolute;right:18px;bottom:104px;z-index:70;border:0;border-radius:13px;padding:10px 18px;background:#e14dcc;color:#fff;font-weight:900;box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:auto}
+
+/* V46 — requested live stage UI: preserve the original Solo UI and only activate
+   these layouts when a real co-host/guest/PK stage is attached. */
+.reference-solo-live.stage-live{background:#050507!important}
+.reference-solo-live.stage-live .live-stage{position:absolute;inset:0;z-index:2;background:#050507;color:#fff;overflow:hidden}
+.reference-solo-live.stage-live .live-stage-header{position:absolute;top:12px;left:16px;right:16px;height:62px;z-index:20;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+.reference-solo-live.stage-live .live-stage-title{font-size:18px;font-weight:900;text-shadow:0 2px 8px #000}
+.reference-solo-live.stage-live .live-stage-score{font-size:12px;font-weight:800;background:rgba(0,0,0,.58);padding:8px 12px;border-radius:12px}
+.reference-solo-live.stage-live .one-vs-one-stage{position:absolute;inset:74px 0 0;display:grid;grid-template-columns:1fr 1fr;background:#050505;gap:2px}
+.reference-solo-live.stage-live .one-vs-one-panel{position:relative;min-width:0;overflow:hidden;background:#111;display:flex;align-items:flex-end}
+.reference-solo-live.stage-live .one-vs-one-panel .live-stage-track,.reference-solo-live.stage-live .one-vs-one-panel .live-stage-placeholder{position:absolute;inset:0}
+.reference-solo-live.stage-live .live-stage-track{background:#090909;overflow:hidden}
+.reference-solo-live.stage-live .live-stage-track video{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important}
+.reference-solo-live.stage-live .live-stage-placeholder{display:grid;place-items:center;background:radial-gradient(circle at center,#262031,#08080b);font-size:58px;font-weight:900;color:#fff}
+.reference-solo-live.stage-live .live-stage-placeholder img{width:100%;height:100%;object-fit:cover}
+.reference-solo-live.stage-live .live-stage-placeholder small{position:absolute;bottom:52px;font-size:11px;color:#d0ccd8;background:rgba(0,0,0,.45);padding:4px 8px;border-radius:8px}
+.reference-solo-live.stage-live .live-stage-name{position:absolute;left:12px;right:12px;bottom:12px;z-index:5;color:#fff;font-size:13px;font-weight:800;text-shadow:0 2px 8px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reference-solo-live.stage-live .live-stage-name span{font-size:10px;margin-left:5px;color:#f1d7ff;background:rgba(0,0,0,.42);padding:3px 6px;border-radius:7px}
+.reference-solo-live.stage-live .live-stage-x{position:absolute;right:10px;top:10px;z-index:6;width:34px;height:34px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:22px;line-height:1}
+.reference-solo-live.stage-live .guest-stage-grid{position:absolute;inset:74px 10px 92px;display:grid;grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;align-content:stretch;gap:4px}
+.reference-solo-live.stage-live .guest-stage-box{position:relative;min-width:0;overflow:hidden;background:#111;border-radius:3px}
+.reference-solo-live.stage-live .guest-stage-box .live-stage-track,.reference-solo-live.stage-live .guest-stage-box .live-stage-placeholder{position:absolute;inset:0}
+.reference-solo-live.stage-live .guest-stage-box.empty{display:grid;place-items:center;background:#0c0c0f;border:1px solid rgba(255,255,255,.08)}
+.reference-solo-live.stage-live .stage-plus{width:50px;height:50px;border-radius:50%;background:#e03fcf;color:#fff;display:grid;place-items:center;font-size:32px;font-weight:300}
+.reference-solo-live.stage-live .large-guest-stage-body{position:absolute;inset:74px 8px 92px;display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,.86fr);gap:3px;background:#050505}
+.reference-solo-live.stage-live .large-guest-host,.reference-solo-live.stage-live .pk-featured-side{position:relative;overflow:hidden;background:#111}
+.reference-solo-live.stage-live .stage-person-card{position:absolute;inset:0;overflow:hidden;background:#111}
+.reference-solo-live.stage-live .stage-person-card>.live-stage-track,.reference-solo-live.stage-live .stage-person-card>.live-stage-placeholder{position:absolute;inset:0}
+.reference-solo-live.stage-live .live-stage-seat-grid-8,.reference-solo-live.stage-live .pk-seat-grid{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(4,1fr);gap:2px;background:#030303;min-width:0}
+.reference-solo-live.stage-live .live-stage-seat{position:relative;min-width:0;overflow:hidden;background:#111}
+.reference-solo-live.stage-live .live-stage-seat .live-stage-track,.reference-solo-live.stage-live .live-stage-seat .live-stage-placeholder{position:absolute;inset:0}
+.reference-solo-live.stage-live .live-stage-seat.filled{background:#141116}
+.reference-solo-live.stage-live .live-stage-bottom{position:absolute;left:12px;right:12px;bottom:76px;height:38px;z-index:25;display:flex;align-items:center;gap:8px;pointer-events:none}
+.reference-solo-live.stage-live .live-stage-comments-hint{font-size:10px;color:rgba(255,255,255,.55);background:rgba(0,0,0,.38);padding:7px 10px;border-radius:10px}
+.reference-solo-live.stage-live .live-stage-bottom button{margin-left:auto;width:36px;height:36px;border-radius:50%;border:0;background:#d844d0;color:#fff;display:grid;place-items:center;pointer-events:auto}
+.reference-solo-live.stage-live .solo-comments{bottom:138px!important;z-index:24!important;max-height:115px;overflow:hidden}
+.reference-solo-live.stage-live .solo-comment-bar{bottom:82px!important;z-index:28!important;height:48px!important}
+.reference-solo-live.stage-live .solo-bottom-actions{bottom:14px!important;z-index:29!important}
+.reference-solo-live.stage-live .solo-stats{z-index:30!important;top:82px!important}
+.reference-solo-live.stage-live .solo-live-top{z-index:31!important}
+.reference-solo-live.stage-live .solo-live-top .solo-supporters{display:none}
+.reference-solo-live.stage-live .solo-viewer-stat{pointer-events:auto}
+.reference-solo-live.pk-stage-live .live-stage{background:#000}
+.reference-solo-live.pk-stage-live .pk-stage-body{position:absolute;inset:74px 0 92px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(180px,.9fr);gap:2px}
+.reference-solo-live.pk-stage-live .pk-featured-side{position:relative;overflow:hidden}
+.reference-solo-live.pk-stage-live .pk-seat-grid{height:100%}
+
+/* Viewer action sheet — close to the supplied reference, including the top follow/message controls. */
+.reference-solo-live .solo-viewer-action-card{width:min(430px,100%);padding:20px 14px 14px;border-radius:24px 24px 0 0;text-align:left;max-height:82vh;overflow:auto}
+.reference-solo-live .solo-viewer-action-head{display:flex;align-items:center;gap:10px;padding:0 8px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
+.reference-solo-live .solo-viewer-action-head .solo-viewer-action-avatar{margin:0;width:62px;height:62px;flex:none}
+.reference-solo-live .solo-viewer-action-head-copy{flex:1;min-width:0}
+.reference-solo-live .solo-viewer-action-head-copy h3{margin:0;font-size:19px;text-align:left}
+.reference-solo-live .solo-viewer-action-head-copy p{margin:4px 0 0;text-align:left}
+.reference-solo-live .solo-action-circle{width:44px!important;height:44px!important;border-radius:50%!important;padding:0!important;margin:0!important;background:rgba(255,255,255,.08)!important;display:grid;place-items:center;border:1px solid rgba(255,255,255,.1)!important;flex:none}
+.reference-solo-live .solo-action-circle:first-of-type{background:rgba(225,62,205,.16)!important;color:#ef55df}
+.reference-solo-live .solo-action-circle svg{width:20px;height:20px}
+.reference-solo-live .sheet-row{width:100%;min-height:72px;border:0!important;background:transparent!important;display:grid;grid-template-columns:50px 1fr 18px;align-items:center;gap:8px;text-align:left!important;margin:0!important;border-radius:0!important;padding:8px!important}
+.reference-solo-live .sheet-row:active{background:rgba(255,255,255,.05)!important}
+.reference-solo-live .sheet-row .sheet-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);color:#b8b3c5}
+.reference-solo-live .sheet-row .sheet-icon svg{width:21px;height:21px}
+.reference-solo-live .sheet-row>span:nth-child(2){display:flex;flex-direction:column;gap:4px;min-width:0}
+.reference-solo-live .sheet-row b{font-size:17px}
+.reference-solo-live .sheet-row small{font-size:11px;color:#777383}
+.reference-solo-live .sheet-row>span:last-child{color:#777383;font-size:27px}
+.reference-solo-live .guest-row b{color:#29d56d}.reference-solo-live .guest-row .sheet-icon{color:#2ee077}
+.reference-solo-live .moderator-row b{color:#43bdf8}.reference-solo-live .moderator-row .sheet-icon{color:#43bdf8}
+.reference-solo-live .warn-row b{color:#ffb21d}.reference-solo-live .warn-row .sheet-icon{color:#ffb21d}
+.reference-solo-live .report-row b{color:#ff4d5a}.reference-solo-live .report-row .sheet-icon{color:#ff4d5a}
+.reference-solo-live .kick-row b{color:#ffb21d}.reference-solo-live .kick-row .sheet-icon{color:#ffb21d}
+.reference-solo-live .block-row b{color:#ff4b57}.reference-solo-live .block-row .sheet-icon{color:#ff4b57}
+.reference-solo-live .sheet-cancel{width:100%!important;height:54px!important;margin-top:8px!important;border-radius:18px!important;background:#1e1d29!important;border:1px solid rgba(255,255,255,.08)!important;color:#a8a4b0!important;font-size:16px!important;font-weight:800!important}
+
+@media(max-width:390px){
+ .reference-solo-live.stage-live .live-stage-header{left:12px;right:12px}
+ .reference-solo-live.stage-live .large-guest-stage-body,.reference-solo-live.pk-stage-live .pk-stage-body{grid-template-columns:minmax(0,1fr) minmax(145px,.82fr)}
+ .reference-solo-live.stage-live .live-stage-name{font-size:11px}
+ .reference-solo-live.stage-live .live-stage-name span{font-size:8px}
+ .reference-solo-live .solo-viewer-action-card{padding-left:8px;padding-right:8px}
+}
+
+/* V48 — stage presentation follows the supplied pre-PK / guest references.
+   Solo remains unchanged; only stage modes receive these rules. */
+.reference-solo-live.stage-live:not(.pk-stage-live) .live-stage-header{display:none!important}
+.reference-solo-live.stage-live:not(.pk-stage-live) .one-vs-one-stage{inset:0!important}
+.reference-solo-live.stage-live:not(.pk-stage-live) .live-stage-bottom{bottom:72px!important}
+.reference-solo-live.stage-live:not(.pk-stage-live) .live-stage-comments-hint{display:none!important}
+.reference-solo-live.stage-live .solo-comments{z-index:26!important;pointer-events:auto}
+.reference-solo-live.stage-live .solo-comment-bar{z-index:28!important}
+.reference-solo-live.stage-live .solo-bottom-actions{z-index:29!important}
+.reference-solo-live.stage-live .solo-live-top{z-index:31!important}
+.reference-solo-live.stage-live .solo-stats{z-index:30!important}
+.reference-solo-live.stage-live .solo-viewer-action-backdrop{z-index:90!important}
+.reference-solo-live.stage-live .solo-viewer-list-backdrop{z-index:89!important}
+.reference-solo-live.stage-live .solo-incoming-invite-backdrop{z-index:100!important}
+.reference-solo-live.stage-live .solo-gift-drawer-backdrop{z-index:120!important}
